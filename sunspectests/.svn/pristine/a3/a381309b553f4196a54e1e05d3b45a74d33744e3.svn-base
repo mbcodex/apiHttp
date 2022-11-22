@@ -1,0 +1,116 @@
+package com.powin.modbusfiles.awe;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.security.KeyManagementException;
+import java.util.stream.Stream;
+
+import org.apache.logging.log4j.LogManager;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import com.powin.modbusfiles.configuration.StackType;
+import com.powin.modbusfiles.derating.CellVoltageDerate;
+import com.powin.modbusfiles.testbase.BaseIntegrationTest;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.ScriptHelper;
+
+public class ZeroConfigFromStringIntegrationTest extends BaseIntegrationTest {
+	public static ZeroConfigFromString cZeroConfigTesting;
+	private static int cArrayCount = 1;
+	private static int cStringCount = 1;
+	static {
+		BaseIntegrationTest.LOG = LogManager.getLogger();
+	}
+	
+	@BeforeAll
+	public static void setupBeforeClass() throws Exception {
+		cZeroConfigTesting = new ZeroConfigFromString();
+		boolean isTomcatRestartRequired = CommonHelper.setupSystem("MBTEST1021", StackType.STACK_140_GEN2, cArrayCount,
+				cStringCount, CellVoltageDerate.maxChargePowerPerStackKw,
+				cStringCount * CellVoltageDerate.maxChargeCurrentPerStackAmps);
+		if (isTomcatRestartRequired) {
+			CommonHelper.restartTurtleTomcat();
+		}
+	}
+
+	@AfterAll
+	public static void teardown() {
+		ScriptHelper.executeProcess("sh", "-c", "echo " + Constants.USER + " | sudo -S rm -dr /home/powin/foo*");
+		LOG.info("Finish {}", ZeroConfigFromStringIntegrationTest.class.getName());
+	}
+
+//	@Disabled
+	@Tag("simulator")
+	@Tag("zeroconfigfromstring")
+	@Test
+	public void testSingleNotification()
+			throws KeyManagementException {
+//		assert (cZeroConfigTesting.testNotifications(2019, 3666));
+//		assert (cZeroConfigTesting.testNotifications(2020, 3666));
+		assert (cZeroConfigTesting.testNotifications(1001, 3666));
+	}
+
+	public static Stream<Arguments> notificationValues() {
+		// TO DO: make these values more descriptive
+		// 1025, 2025 and 2561 fail currently on the simulator - Mahesh 2/21/21
+		return Stream.of(
+				Arguments.of(NotificationCodes.CELL_HIGH_VOLTAGE_ALARM.intValue(), 3666), 
+				Arguments.of(NotificationCodes.BATTERY_PACK_HIGH_VOLTAGE_ALARM.intValue(), 3777), 
+				Arguments.of(NotificationCodes.STRING_HIGH_VOLTAGE_ALARM.intValue(), 3888),
+				Arguments.of(NotificationCodes.CELL_LOW_VOLTAGE_ALARM.intValue(), 3999), 
+				Arguments.of(NotificationCodes.BATTERY_PACK_LOW_VOLTAGE_ALARM.intValue(), 3666), 
+				Arguments.of(NotificationCodes.STRING_LOW_VOLTAGE_ALARM.intValue(), 3777), 
+				Arguments.of(NotificationCodes.CELL_HIGH_VOLTAGE_DELTA_ALARM.intValue(), 3888),
+				Arguments.of(NotificationCodes.BATTERY_PACK_VOLTAGE_DELTA_ALARM.intValue(), 3999), 
+				Arguments.of(NotificationCodes.STRING_VOLTAGE_DELTA_ALARM.intValue(), 3666), 
+				Arguments.of(NotificationCodes.CELL_HIGH_TEMPERATURE_ALARM.intValue(), 3777), 
+				Arguments.of(1011, 3888),
+				Arguments.of(1012, 3999), Arguments.of(1013, 3666), Arguments.of(NotificationCodes.CELL_LOW_TEMPERATURE_ALARM.intValue(), 3777), Arguments.of(1015, 3888),
+				Arguments.of(1016, 3999), Arguments.of(1017, 3666), Arguments.of(1018, 3777), Arguments.of(NotificationCodes.STRING_HIGH_CHARGE_RATE_ALARM.intValue(), 3888),
+				Arguments.of(NotificationCodes.STRING_HIGH_DISCHARGE_RATE_ALARM.intValue(), 3999), Arguments.of(1021, 3666), Arguments.of(1022, 3777), Arguments.of(1023, 3888),
+				Arguments.of(1024, 3999),
+//				Arguments.of(1025, 3666), 
+				Arguments.of(1026, 3777), Arguments.of(1027, 3888), Arguments.of(1028, 3999), Arguments.of(1029, 3888),
+				Arguments.of(1030, 3999), Arguments.of(1046, 3666), Arguments.of(1047, 3777), Arguments.of(1048, 3888),
+				Arguments.of(1049, 3999), Arguments.of(1050, 3666), Arguments.of(1051, 3777), Arguments.of(1052, 3888),
+				Arguments.of(1053, 3999), Arguments.of(1054, 3666), Arguments.of(1055, 3777), Arguments.of(1056, 3888),
+				Arguments.of(1057, 3999), Arguments.of(NotificationCodes.CELL_HIGH_VOLTAGE_WARNING.intValue(), 3666), 
+				Arguments.of(NotificationCodes.BATTERY_PACK_HIGH_VOLTAGE_WARNING.intValue(), 3777), 
+				Arguments.of(NotificationCodes.STRING_HIGH_VOLTAGE_WARNING.intValue(), 3888),
+				Arguments.of(NotificationCodes.CELL_LOW_VOLTAGE_WARNING.intValue(), 3999), 
+				Arguments.of(NotificationCodes.BATTERY_PACK_LOW_VOLTAGE_WARNING.intValue(), 3666), 
+				Arguments.of(NotificationCodes.STRING_LOW_VOLTAGE_WARNING.intValue(), 3777), 
+				Arguments.of(2007, 3888),
+				Arguments.of(2008, 3999), Arguments.of(2009, 3666), Arguments.of(NotificationCodes.CELL_HIGH_TEMPERATURE_WARNING.intValue(), 3777), Arguments.of(2011, 3888),
+				Arguments.of(2012, 3999), Arguments.of(2013, 3666), Arguments.of(NotificationCodes.CELL_LOW_TEMPERATURE_WARNING.intValue(), 3777), Arguments.of(2015, 3888),
+				Arguments.of(2016, 3999), Arguments.of(2017, 3666), Arguments.of(2018, 3777), Arguments.of(NotificationCodes.STRING_HIGH_CHARGE_RATE_WARNING.intValue(), 3888),
+				Arguments.of(NotificationCodes.STRING_HIGH_DISCHARGE_RATE_WARNING.intValue(), 3999), Arguments.of(2021, 3666), Arguments.of(2022, 3777), Arguments.of(2023, 3888),
+				Arguments.of(2024, 3999),
+//		Arguments.of(  2025, 3666 ),
+				Arguments.of(2026, 3777), Arguments.of(2027, 3888), Arguments.of(2028, 3999), Arguments.of(2029, 3888),
+				Arguments.of(2030, 3999), Arguments.of(2046, 3666), Arguments.of(2047, 3777), Arguments.of(2048, 3888),
+				Arguments.of(2049, 3999), Arguments.of(2050, 3666), Arguments.of(2051, 3777), Arguments.of(2052, 3888),
+				Arguments.of(2053, 3999), Arguments.of(2054, 3666), Arguments.of(2055, 3777), Arguments.of(2056, 3888),
+				Arguments.of(2057, 3999), Arguments.of(2064, 3666), Arguments.of(2534, 3777), Arguments.of(2535, 3888),
+//		Arguments.of(  2561, 3999 ),
+				Arguments.of(2562, 3999), 
+				Arguments.of(2563, 3999));
+
+	}
+
+	@Tag("simulator")
+	@Tag("zeroconfigfromstring")
+	@Tag("notificationsTest")
+	@ParameterizedTest
+	@MethodSource("notificationValues")
+	public void notificationsTest(int notification, int trigger) throws Exception {
+		assertTrue(cZeroConfigTesting.testNotifications(notification, trigger));
+	}
+}

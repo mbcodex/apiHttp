@@ -1,0 +1,124 @@
+package com.powin.modbusfiles.awe;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.jcraft.jsch.JSchException;
+import com.powin.modbusfiles.configuration.StackType;
+import com.powin.modbusfiles.reports.SystemInfo;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.FileHelper;
+import com.powin.modbusfiles.utilities.PowinProperty;
+import com.powin.modbusfiles.utilities.ScriptHelper;
+
+public class ZeroConfigTurtleToString {
+	private static StackType cStackType;
+	private static String cStationCode;
+	private static int cArrayCount;
+	private static int cStringCount;
+	private static String cConfigFileLocation = "/etc/powin/qaqc/configlog/stationCode/SetSafetyAndNotificationConfiguration/";
+	private final static Logger LOG = LogManager.getLogger();
+
+	public ZeroConfigTurtleToString(StackType stackType, int arrayCount, int stringCount) {
+		cStackType = stackType;
+		cArrayCount = arrayCount;
+		cStringCount = stringCount;
+	}
+
+	public void init() {
+		cStationCode = SystemInfo.getStationCode();
+		cConfigFileLocation = cConfigFileLocation.replace("stationCode", cStationCode + "-1");
+	}
+
+	private void deleteOldConfigFiles() {
+		FileHelper.setFullPermissions("/etc/powin/qaqc/configlog");
+		String command = "echo " + Constants.PW + " | sudo -S rm -rf /etc/powin/qaqc/configlog/*";
+		ScriptHelper.runScriptRemotelyOnTurtle(command);
+	}
+
+	public boolean validateConfigFiles() {
+		// Get the expected file contents
+		LOG.info("Get {} from resources", cStackType.getSafetyAndNotificationConfigurationName());
+		File expectedFile = FileHelper.getFileFromResources(cStackType.getSafetyAndNotificationConfigurationName(),FileHelper.class);
+		String localFolderForConfigFiles = FileHelper.createDynamicFolder("configTest", "/home/powin/");
+		LOG.info("Creating folder for config files {}", localFolderForConfigFiles);
+		
+		List<String> expectedFileNameList = createExpectedConfigFileNames();
+		LOG.info("expected files are {}", expectedFileNameList);
+		String expectedFileNameListAsString = CommonHelper.convertArrayListToString(expectedFileNameList);
+		FileHelper.setFullPermissions(localFolderForConfigFiles);
+		// FileHelper.setFullPermissions("/etc/powin/qaqc/configlog/");
+		// ScriptHelper.runScriptRemotelyOnTurtle("sudo chmod -R 777
+		// /etc/powin/qaqc/configlog/");
+
+		// String cConfigFileLocation =
+		// "/etc/powin/qaqc/configlog/MBTEST1021-1/SetSafetyAndNotificationConfiguration/*.*";
+		String changePermissionsCommand = "sudo chmod -R 777 /etc/powin/qaqc/configlog/";
+		ScriptHelper.executeRemoteSSHCommand(PowinProperty.TURTLEHOST.toString(), "powin", "powin",
+				"echo powin | sudo -S  " + changePermissionsCommand);
+		// Copy files from turtle location to local
+		//For localhost turtle
+		FileHelper.copyFileFromRemote(cConfigFileLocation,
+				localFolderForConfigFiles + "SetSafetyAndNotificationConfiguration/", Constants.TURTLE_HOST, "powin",
+				"powin");
+		//For 10.0.0.3 turtle
+		//FileHelper.copyFileFromTurtleToLocal(cConfigFileLocation, localFolderForConfigFiles);
+		// Get list of files actually generated
+		List<String> actualFileNameList = new ArrayList<>();
+		boolean fileContentMatch = true;
+		for (File generatedFile : new File(localFolderForConfigFiles + "SetSafetyAndNotificationConfiguration/")
+				.listFiles()) {
+			actualFileNameList.add(generatedFile.getName());
+			fileContentMatch &= FileHelper.compareContents(expectedFile.getAbsolutePath(),generatedFile.getAbsolutePath());
+		}
+		Collections.sort(actualFileNameList);
+		String actualFileNameListAsString = CommonHelper.convertArrayListToString(actualFileNameList);
+		LOG.info(actualFileNameListAsString);
+		LOG.info(expectedFileNameListAsString);
+		boolean fileNamesMatch = actualFileNameListAsString.contentEquals(expectedFileNameListAsString);
+		System.out.println("All file names match: " + fileNamesMatch);
+		// Verify file contents match expected file contents
+		System.out.println("All file contents match: " + fileContentMatch);
+		// Delete local folder
+		// CommonHelper.deleteFolderContents2(localFolderForConfigFiles);
+		return fileNamesMatch & fileContentMatch;
+	}
+
+	private List<String> createExpectedConfigFileNames() {
+		List<String> expectedFileNameList = new ArrayList<>();
+		for (int arrCount = 1; arrCount <= cArrayCount; arrCount++) {
+			for (int strCount = 1; strCount <= cStringCount; strCount++) {
+				String filename = arrCount + "-" + strCount + " - SetSafetyAndNotificationConfiguration.csv";
+				expectedFileNameList.add(filename);
+			}
+		}
+		Collections.sort(expectedFileNameList);
+		LOG.info("Generated filenames: {}", expectedFileNameList);
+		return expectedFileNameList;
+	}
+
+	/**
+	 * Clean the qaqc directory, restart turtle tomcat to load zeroconfig files for
+	 * the new configuration, validate files.
+	 *
+	 * @return
+	 * @throws IOException
+	 * @throws InterruptedException
+	 * @throws JSchException
+	 */
+	public boolean workFlow() throws IOException, InterruptedException, JSchException {
+		LOG.info("deleting old config files from /etc/powin/qaqc");
+		deleteOldConfigFiles();
+		CommonHelper.restartTurtleTomcat();
+		init();
+		return validateConfigFiles();
+	}
+
+}

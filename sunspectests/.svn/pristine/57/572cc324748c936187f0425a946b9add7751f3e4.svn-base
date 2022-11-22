@@ -1,0 +1,149 @@
+package com.powin.modbusfiles.cycling;
+
+import java.io.IOException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.powin.modbusfiles.reports.Reports;
+import com.powin.modbusfiles.reports.Reports.ReportMeasurements;
+import com.powin.modbusfiles.stackoperations.Balancing;
+import com.powin.modbusfiles.stackoperations.Contactors;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.FileHelper;
+import com.powin.modbusfiles.utilities.PowinProperty;
+
+public class SP659UL991CyclingTest {
+	// Test settings
+	private static int chargingDuration;
+	private static int dischargingDuration;
+	private static int restPeriodSeconds;
+	private static int logInterval = 2;
+	private static int maxCycles = 1;
+	// Test utilities
+	private final static Logger LOG = LogManager.getLogger();
+	private static Reports strReport;
+	private static Reports arrReport;
+	private static FileHelper ulReport;
+	// Stack info
+	private static int arrayIndex;
+	private static int stringIndex;
+	private static String batteryPackCount;
+	private static String cellGroupCount;
+	// For balancing operations
+	private static Balancing cBalancing = new Balancing(PowinProperty.ARRAY_INDEX.intValue(),
+			PowinProperty.STRING_INDEX.intValue());;
+
+	public void init(String[] args) throws IOException, InterruptedException {
+		// System string and array reports
+		arrayIndex = PowinProperty.ARRAY_INDEX.intValue();
+		stringIndex = PowinProperty.STRING_INDEX.intValue();
+		batteryPackCount = PowinProperty.BATTERY_PACK_COUNT.toString();
+		cellGroupCount = PowinProperty.CELL_GROUP_COUNT.toString();
+		strReport = new Reports(arrayIndex + "," + stringIndex);
+		arrReport = new Reports(Integer.toString(arrayIndex));
+		// Output report files
+		ulReport = new FileHelper("ul_csv_file_path");
+		ulReport.writeToCSV("operation," + strReport.getCellGroupReportHeader(1)
+				+ ",stackVoltage,stackCurrent,PositiveContactorState,NegativeContactorState");
+		// Get test parameters from command line. Default values are supplied by
+		// default.properties in case parameters not in command line
+		chargingDuration = args.length > 0 ? Integer.parseInt(args[0]) : PowinProperty.UL_CHARGINGDURATION.intValue();
+		dischargingDuration = args.length > 1 ? Integer.parseInt(args[1])
+				: PowinProperty.UL_DISCHARGINGDURATION.intValue();
+		restPeriodSeconds = args.length > 2 ? Integer.parseInt(args[2]) : PowinProperty.UL_RESTPERIODSECONDS.intValue();
+		logInterval = args.length > 3 ? Integer.parseInt(args[3]) : PowinProperty.UL_LOGINTERVAL.intValue();
+		maxCycles = args.length > 4 ? Integer.parseInt(args[4]) : PowinProperty.UL_MAXCYCLES.intValue();
+
+	}
+
+	// Balancing methods
+	public static void chargeViaBalancer(int arrayIndex, int stringIndex, int batteryPackIndex,
+			int cellGroupIndex)  {
+		cBalancing.balanceCgCharging(Integer.valueOf(arrayIndex), Integer.valueOf(stringIndex),
+				Integer.valueOf(batteryPackIndex), Integer.valueOf(cellGroupIndex));
+	}
+
+	public static void dischargeViaBalancer(int arrayIndex, int stringIndex, int batteryPackIndex,
+			int cellGroupIndex)  {
+		cBalancing.balanceCgDischarging(Integer.valueOf(arrayIndex), Integer.valueOf(stringIndex),
+				Integer.valueOf(batteryPackIndex), Integer.valueOf(cellGroupIndex));
+	}
+
+	public static void stopBalancing(int arrayIndex, int stringIndex) {
+		Balancing.balanceStop(Integer.valueOf(arrayIndex), Integer.valueOf(stringIndex));
+	}
+
+	// Test methods
+	public static void runCycle(boolean isCharging, int cellGroupIndex)		 {
+		// Run either a charge or discharge based on cycleType
+		String cycleType = isCharging ? "Charging" : "Discharging";
+		long endTime;
+		if (isCharging) {
+			chargeViaBalancer(arrayIndex, stringIndex, 1, cellGroupIndex);
+			endTime = System.currentTimeMillis() + 1000 * Long.valueOf(chargingDuration);
+		} else {
+			dischargeViaBalancer(arrayIndex, stringIndex, 1, cellGroupIndex);
+			endTime = System.currentTimeMillis() + 1000 * Long.valueOf(dischargingDuration);
+		}
+		// Keep cycle running for a specified period
+		strReport = new Reports(arrayIndex + "," + stringIndex);
+		String connectedStringCount;
+		while (System.currentTimeMillis() < endTime) {
+			// Records data if contactors are closed
+			connectedStringCount = arrReport.getCommunicatingStackCount();
+			if (connectedStringCount.equals("1")) {
+				ulReport.writeToCSV(cycleType + " balancing cycle in progress,"
+						+ strReport.getCellGroupReportAsString(ReportMeasurements.both, 1) + "," + strReport.getMeasuredStringVoltage()
+						+ "," + strReport.getStringCurrent() + "," + strReport.getStringPositiveContactorStatus() + ","
+						+ strReport.getStringNegativeContactorStatus());
+				CommonHelper.sleep(1000 * logInterval);
+			} else {// contactors were opened due to power being switched off
+				ulReport.writeToCSV(cycleType + " balancing cycle interrupted");
+				Contactors.closeContactors(arrayIndex, stringIndex);
+				CommonHelper.sleep(Constants.TEN_SECONDS);
+			}
+			strReport = new Reports(Integer.toString(arrayIndex) + "," + Integer.toString(stringIndex));
+			arrReport = new Reports(Integer.toString(arrayIndex) );
+
+		}
+		// Cycle complete
+		ulReport.writeToCSV(cycleType + " balancing cycle  for cell group: " + cellGroupIndex + " complete,"
+				+ strReport.getCellGroupReportAsString(ReportMeasurements.both, 1) + "," + strReport.getMeasuredStringVoltage() + ","
+				+ strReport.getStringCurrent() + "," + strReport.getStringPositiveContactorStatus() + ","
+				+ strReport.getStringNegativeContactorStatus());
+	}
+
+	public static void rest(int restPeriodInSecs)
+	{
+		// Stop powering
+		try {
+			stopBalancing(arrayIndex, stringIndex);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		// Rest
+		CommonHelper.sleep(restPeriodInSecs * 1000);
+	}
+
+	@SuppressWarnings("static-access")
+	public static void main(String[] args) throws Throwable {
+		try {
+			SP659UL991CyclingTest mCharacterizationTest = new SP659UL991CyclingTest();
+			mCharacterizationTest.init(args);
+			for (int numCycles = 0; numCycles < maxCycles; numCycles++) {
+				for (int cgIndex = 1; cgIndex <= Integer.parseInt(cellGroupCount); cgIndex++) {
+					// Discharge balancing
+					SP659UL991CyclingTest.runCycle(false, cgIndex);
+					// Charge balancing
+					SP659UL991CyclingTest.runCycle(true, cgIndex);
+				}
+			}
+		} catch (Exception e) {
+			LOG.error("Exception in go.", e);
+		}
+	}
+}

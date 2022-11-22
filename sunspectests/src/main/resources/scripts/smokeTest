@@ -1,0 +1,194 @@
+#!/bin/bash
+
+#--------------------------------------------------------------------------------------------------------------------
+#  Run regression tests in Sunspectests that are labeled with @Tag("regression")
+#  This script will:
+#       install Maven if required
+#       Create the directory RegressionLogs
+#       Create a log directory for today's date YYYYMMDD
+#       Prompt the user with the current version of Turtle and asks for 'Enter' to run regression
+#       Runs regression
+#   Note: This version runs requires Eclipse installed.
+#----------------------------------------------------------------------------------------------------------------------
+
+# Trim the spaces from a string
+trim () {
+  echo "$(echo -e "${1}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+}
+
+SMOKE_TEST_LOGS=$HOME/SmokeLogs
+SMOKETESTDIR=$HOME/tools/smoketestData
+
+sdatestamp=$(LC_ALL=C date +%Y%m%d)
+logdir="$SMOKE_TEST_LOGS/$sdatestamp"
+
+ . $HOME/tools/smokeTestVersions 
+
+getTimestamp() {
+  timestamp=$(LC_ALL=C date +%Y%m%d_%H%M%S)
+}
+
+
+#--------------------------------------------------------------------------------------------------------------------
+# Install maven, create log directory
+#--------------------------------------------------------------------------------------------------------------------
+init() {
+
+if [ ! -e "$(command -v mvn)" ] ; 
+then 
+   cat "${SMOKETESTDIR}.sudopw" | sudo -S echo yum install maven -y 
+fi
+
+#Create log folder
+if [ ! -e "$SMOKE_TEST_LOGS" ] ;
+then 
+  mkdir $SMOKE_TEST_LOGS
+  chmod 777 $SMOKE_TEST_LOGS
+fi
+
+# Create output directory
+if [ ! -e "$SMOKE_TEST_LOGS/$sdatestamp" ] ;
+then 
+  mkdir $logdir
+  chmod 777 $logdir
+  echo $logdir created 
+fi
+
+}
+
+
+archiveSurefireReports() {
+  tar -czvf $logdir/reports_${turtle}_${timestamp}.tgz $SUNSPECTESTS/target/surefire-reports
+  rm $SUNSPECTESTS/target/surefire-reports/*
+}
+
+
+runTests() {
+cd $SUNSPECTESTS
+echo $(pwd)
+#Get the software versions installed
+. $HOME/versions.sh
+getTimestamp
+logfile=$logdir/smokeLog_${turtle}_${timestamp}
+ echo The current version of Turtle is $(trim "$turtle") > $logfile
+ echo The current version of Coblynau is $(trim "$cob") >> $logfile
+ echo The current version of Kobold is $(trim "$kobold") >> $logfile
+ echo The current version of Knocker is $(trim "$knocker") >> $logfile
+ echo The current version of Primrose is $(trim "$primrose") >> $logfile
+ echo running tests with tags "smoketest" | tee -a $logfile
+ mvn surefire:test -Psurefire  -Dgroups="smoketest" |  tee $logfile 
+ #archiveSurefireReports
+
+}
+#----------------------------------------------------------------------
+# Install cloud apps
+#----------------------------------------------------------------------
+installCloud() {
+   echo installCloud "$@"
+	cd $SUNSPECTESTS
+        mvn surefire:test -Psurefire  -Dgroups="installcloudapps" -Dmajor="$1" -Dminor="$2" 
+	cd $HOME
+}
+#----------------------------------------------------------------------
+# Install turtle app
+#----------------------------------------------------------------------
+installTurtle() {
+   echo installTurtle "$@"
+	cd $SUNSPECTESTS
+        mvn surefire:test -Psurefire  -Dgroups="installturtleapp" -Dmajor="$1" -Dminor="$2" 
+	cd $HOME
+}
+#----------------------------------------------------------------------
+# Post the regressionReport to slack
+#----------------------------------------------------------------------
+reportToSlack() {
+# send report to slack channel
+# create report
+   
+  grep 'Time elapsed:' $logfile | tee $HOME/regressionReport.txt
+
+  cd $SUNSPECTESTS
+  mvn surefire:test -Psurefire  -Dgroups="slackRegression" |  tee -a $logfile
+  cd $HOME
+}
+
+setArchivaPW () {
+ cd $SUNSPECTESTS
+ local archivaCredFile=/home/powin/.m2/settings.xml
+ sudo chmod -R 777 $archivaCredFile
+ sed -i 's|<username>.*</username>|<username>rickf@powin.com</username>|g' $archivaCredFile
+ sed -i 's|<password>.*</password>|<password>@rch1v@0606</password>|g' $archivaCredFile
+ cd $HOME
+}
+
+#----------------------------------------------------------------------
+# Params are cloud major cloud minor turtle major turtle minor
+#----------------------------------------------------------------------
+installVersionAndRun() {
+    setArchivaPW
+    installCloud $1 $2
+    installTurtle $1 $2
+
+    runTests "smoketest"
+    reportToSlack
+
+}
+
+#-----------------------------------------------------------------------------
+# Given a list of supported versions as major minor major minor
+# 
+# For each version, 
+#    if a  new build is found install and run the smoke test on that version
+#    Check each version of cloud with the two previous turtle versions
+#-----------------------------------------------------------------------------
+smokeEm() {
+#if [ -e $HOME/.smoke_test_semaphore ];
+#then
+#  return
+#fi
+versions=("$@")
+for i in $(seq 0 2 "${#versions[@]}"); do 
+  major="${versions[i]}"
+  minor="${versions[i+1]}"
+  if [[ ! -z $major ]]; 
+  then
+    checkForNewVersion $major $minor
+    if $NEW_VERSION_DETECTED;
+    then
+      echo "Running smoke test for $major $minor"
+      getTimestamp
+      init
+      touch $HOME/.smoke_test_semaphore
+      installVersionAndRun $major $minor 
+      cp "$APP_VERSION_PROPS_NEW" "$APP_VERSION_PROPS"
+      rm $HOME/.smoke_test_semaphore
+    else 
+      echo "No changes found for $major $minor"
+    fi
+  fi
+  NEW_VERSION_DETECTED=false
+  cd $HOME
+done
+
+}
+
+
+
+#-----------------------------------------------------------------------------
+# The list of supported versions
+# 
+#-----------------------------------------------------------------------------
+main() {
+
+supportedVersions=(2 29 2 31 2 32 2 33 2 34 2 35)
+smokeEm "${supportedVersions[@]}"
+
+cd $HOME
+./cleaner
+}
+
+# Is this being invoked from the command line for execution or loaded for use as a library
+isExecute=$(echo -n $(ps -o stat= -p $PPID) && echo $(ps -o stat= -p $$))
+echo $isExecute
+[[ 'SsS+' = $isExecute || 'SsS' = $isExecute ]] && main
+

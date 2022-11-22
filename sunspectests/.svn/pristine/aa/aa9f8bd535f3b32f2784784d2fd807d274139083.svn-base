@@ -1,0 +1,58 @@
+package com.powin.modbusfiles.awe;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.powin.modbusfiles.configuration.StackType;
+import com.powin.modbusfiles.reports.SystemInfo;
+import com.powin.modbusfiles.stackoperations.Balancing;
+import com.powin.modbusfiles.stackoperations.Contactors;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.PowinProperty;
+
+public class BatteryPackVoltageNotifications {
+	final static Logger LOG = LogManager.getLogger();
+	public static Balancing cBalancing = new Balancing(PowinProperty.ARRAY_INDEX.toString(),
+			PowinProperty.STRING_INDEX.toString());
+	private static int cArrayIndex;
+	private static int cStringIndex;
+	static StackType stackType = SystemInfo.setZeroConfigLimits();
+	private static BatteryPackVoltageNotificationCommands bpVoltageNotificationCommands;
+
+	public BatteryPackVoltageNotifications(int arrayIndex, int stringIndex) {
+		SystemInfo.getStationCode();
+		cArrayIndex = arrayIndex;
+		cStringIndex = stringIndex;
+		bpVoltageNotificationCommands = new BatteryPackVoltageNotificationCommands(arrayIndex, stringIndex);
+	}
+
+	// TODO Pull up to base class
+	public boolean runTest(NotificationCodes notificationType) {
+		int setValue = BatteryPackVoltageNotificationCommands.getSetValue(notificationType);
+		int clearValue = BatteryPackVoltageNotificationCommands.getClearValue(notificationType, setValue);
+		return runTest(notificationType, setValue, clearValue);
+	}
+
+	public boolean runTest(NotificationCodes notificationType, int setValue, int clearValue) {
+		boolean isTestPass = true;
+		Contactors.closeContactors(cArrayIndex, cStringIndex);
+		BatteryPackVoltageNotificationCommands.setNotification(notificationType, setValue, clearValue);
+		isTestPass = AweCommon.verifyNotificationAppeared(notificationType, Constants.TWO_MINUTES);
+		Contactors.closeContactors(cArrayIndex, cStringIndex);
+		isTestPass &= AweCommon.verifyContactorBehaviorWhenNotificationSet(notificationType, Constants.TWO_MINUTES);
+		BatteryPackVoltageNotificationCommands.resetNotification();
+		isTestPass &= AweCommon.verifyNotificationsCleared(notificationType, Constants.TWO_MINUTES);
+		isTestPass &= AweCommon.verifyContactorsClosed(3 * Constants.TWO_MINUTES, "");
+		return isTestPass;
+	}
+
+	public static void main(String[] args) {
+
+		BatteryPackVoltageNotifications mBatteryPackVoltageNotifications = new BatteryPackVoltageNotifications(
+				PowinProperty.ARRAY_INDEX.intValue(), PowinProperty.STRING_INDEX.intValue());
+
+		mBatteryPackVoltageNotifications.runTest(NotificationCodes.CELL_HIGH_VOLTAGE_ALARM);
+		mBatteryPackVoltageNotifications.runTest(NotificationCodes.CELL_LOW_VOLTAGE_ALARM);
+		mBatteryPackVoltageNotifications.runTest(NotificationCodes.CELL_HIGH_VOLTAGE_DELTA_ALARM);
+	}
+}

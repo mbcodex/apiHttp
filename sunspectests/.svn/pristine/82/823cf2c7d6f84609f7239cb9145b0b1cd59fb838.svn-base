@@ -1,0 +1,98 @@
+package com.powin.modbusfiles.apps;
+
+import java.nio.charset.Charset;
+import java.util.regex.Pattern;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.google.protobuf.ByteString;
+import com.powin.dragon.app.realpowercommand.RealPowerCommandAppFactory;
+import com.powin.modbusfiles.reports.SystemInfo;
+import com.powin.modbusfiles.utilities.AppInjectionCommon;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.FileHelper;
+import com.powin.modbusfiles.utilities.StringUtils;
+
+public class RealPowerCommandApp {
+	// private static final int POWER_TOLERANCE = 5;
+	private final static Logger LOG = LogManager.getLogger();
+
+	protected static final String tempConfigFileContents = "{\n" + "  \"enabled\" : ${},\n"
+			+ "  \"realPowerkW\" : {realPowerValue},\n" + "  \"reactivePowerkVAr\" : 0,\n"
+			+ "  \"gridMode\" : \"GRID_FOLLOWING\",\n" + "  \"appConfigName\" : \"default\",\n"
+			+ "  \"appConfigVersion\" : 0\n" + "}\n";
+
+	protected void sendCommandToRealPowerCommandApp(boolean isEnable, int realPower) {
+		LOG.trace("Entering sendCommandToRealPowerCommandApp");
+		String commandText = setEnabledAndPowerValue(isEnable, realPower);
+		String appConfigName = StringUtils.getMatchString(commandText, "default|instant", Pattern.UNIX_LINES,
+				StringUtils.ReturnGroup.NONE, null);
+		AppInjectionCommon.getGoblinCommandDepot()
+				.addCommand("admin",
+						AppInjectionCommon.buildCommand(isEnable,
+								ByteString.copyFrom(commandText, Charset.defaultCharset()), appConfigName,
+								FileHelper.getPriority(RealPowerCommandAppFactory.APPCODE,
+										Constants.REALPOWER_APP_PRIORITY, Constants.HEED),
+								RealPowerCommandAppFactory.APPCODE));
+		CommonHelper.sleep(Constants.TEN_SECONDS);
+		LOG.trace("Exiting sendCommandToRealPowerCommandApp");
+	}
+
+	protected String setEnabledAndPowerValue(boolean isEnable, int realPower) {
+		return tempConfigFileContents.replace("${}", String.valueOf(isEnable)).replace("{realPowerValue}",
+				String.valueOf(realPower));
+	}
+
+	public void enable(int realPower) {
+		sendCommandToRealPowerCommandApp(Constants.ENABLE, realPower);
+	}
+
+	public void disable() {
+		sendCommandToRealPowerCommandApp(Constants.DISABLE, 0);
+	}
+
+	public boolean verifyEnable(int realPower) {
+		LOG.info("Start verifying enable RealPowerCommandApp.");
+		enable(realPower);
+		LOG.info("Enable command sent, waiting for the app enabled.");
+		CommonHelper.quietSleep(Constants.TEN_SECONDS);
+		String statusStr = SystemInfo.getAppStatus(RealPowerCommandAppFactory.APPCODE);
+		return statusStr.contains(String.valueOf(realPower));
+	}
+
+	public boolean verifyDisable() {
+		LOG.info("Start verifying disable RealPowerCommandApp.");
+		disable();
+		LOG.info("Disable command sent, waiting for the app disabled.");
+		CommonHelper.quietSleep(Constants.TEN_SECONDS);
+		String statusStr = SystemInfo.getAppStatus(RealPowerCommandAppFactory.APPCODE).replace(" ", "");
+		org.apache.commons.lang3.StringUtils.deleteWhitespace(statusStr);
+		if (statusStr.toLowerCase().contains("0kw"))
+			return true;
+		return false;
+	}
+
+	public boolean verifyPower(int realPower) {
+		enable(realPower);
+		CommonHelper.quietSleep(Constants.TEN_SECONDS);
+//		List<StringReport> strList = SystemInfo.getStringReportList(PowinProperty.ARRAY_INDEX.toString(), 1);
+		int stringPower = SystemInfo.getActualAcPower();
+//		if (strList != null && strList.isEmpty() == false) {
+//			for (StringReport report : strList) {
+//				stringPower += report.getStringData().getkW();
+//			}
+//			if (Math.abs(realPower - stringPower) < POWER_TOLERANCE)
+//				return true;
+//		}
+
+		return stringPower - realPower == 0;
+	}
+
+	public static void main(String[] args) {
+		RealPowerCommandApp app = new RealPowerCommandApp();
+		// app.enable(90);
+		app.disable();
+	}
+}

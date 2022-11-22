@@ -1,0 +1,184 @@
+package mbTest.utilities;
+
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLConnection;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.X509Certificate;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
+//import org.json.simple.JSONObject;
+
+public class HttpHelper {
+	private String reportUrl = "";
+	private String reportContents;
+
+	public HttpHelper(String url) {
+		reportUrl = url;
+		this.getReport();
+	}
+
+	public HttpHelper() {
+	}
+
+	public HttpHelper(String url, boolean onlyConnect)
+			throws IOException, KeyManagementException, NoSuchAlgorithmException {
+		reportUrl = url;
+		this.getConnection();
+	}
+
+	public URLConnection getConnection()
+			throws NoSuchAlgorithmException, KeyManagementException, MalformedURLException {
+		SSLContext sc = SSLContext.getInstance("SSL");
+		sc.init(null, getTrustingTrustManager(), new java.security.SecureRandom());
+		HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+		// Install the all-trusting host verifier
+		HttpsURLConnection.setDefaultHostnameVerifier(getAllTrustingHostVerifier());
+
+		URL url = new URL(reportUrl);
+		URLConnection con = null;
+		try {
+			con = url.openConnection();
+		} catch (IOException e) {
+			e.printStackTrace();
+			throw new RuntimeException(e);
+		}
+		return con;
+	}
+
+	// Create all-trusting host name verifier
+	public HostnameVerifier getAllTrustingHostVerifier() {
+		return new HostnameVerifier() {
+			@Override
+			public boolean verify(String hostname, SSLSession session) {
+				return true;
+			}
+		};
+	}
+	
+	/*
+	 * fix for Exception in thread "main" javax.net.ssl.SSLHandshakeException:
+	 * sun.security.validator.ValidatorException: PKIX path building failed:
+	 * sun.security.provider.certpath.SunCertPathBuilderException: unable to find
+	 * valid certification path to requested target
+	 */
+	public TrustManager[] getTrustingTrustManager() {
+		return new TrustManager[] { new X509TrustManager() {
+			@Override
+			public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+				return null;
+			}
+
+			@Override
+			public void checkClientTrusted(X509Certificate[] certs, String authType) {
+			}
+
+			@Override
+			public void checkServerTrusted(X509Certificate[] certs, String authType) {
+			}
+
+		} };
+	}
+
+	public void setReportContents(String jsonString) {
+		reportContents = jsonString;
+	}
+
+	@SuppressWarnings("resource")
+	public String getReport() {
+		// Read from connection
+		try {
+			URLConnection con = getURLConnection();
+			Reader reader = getInputReader(con);
+			StringBuilder s = readAll(reader);
+			reportContents = s.toString();
+			closeReader(reader);
+		} catch (Exception e) {
+			reportContents = "";
+		}
+		return reportContents;
+	}
+
+	public StringBuilder readAll(Reader reader) {
+		StringBuilder s = new StringBuilder();
+		while (true) {
+			int ch = 0;
+			try {
+				ch = reader.read();
+				if (ch != -1) {
+					s.append((char) ch);
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+				closeReader(reader);
+				throw new RuntimeException(e);
+			}
+			// We don't want the end of file character
+			if (ch == -1) {
+				break;
+			}
+		}
+		return s;
+	}
+
+	public void closeReader(Reader reader) {
+		try {
+			reader.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	public Reader getInputReader(URLConnection con) {
+		Reader reader = null;
+		try {
+			reader = new InputStreamReader(con.getInputStream());
+		} catch (IOException e) {
+			e.printStackTrace();
+			throw new RuntimeException(e);
+		}
+		return reader;
+	}
+
+	public URLConnection getURLConnection() {
+		URLConnection con = null;
+		try {
+			con = getConnection();
+			CommonHelper.sleep(2 * Constants.ONE_SECOND);
+		} catch (KeyManagementException | NoSuchAlgorithmException | MalformedURLException e1) {
+			e1.printStackTrace();
+			throw new RuntimeException(e1);
+		}
+		return con;
+	}
+	
+    public String getReportContents() {
+    	return reportContents;
+    }
+    
+	/*
+	 * public JSONObject getJSON() { return
+	 * JsonParserHelper.parseJsonFromString(reportContents); }
+	 */
+
+	public static void main(String[] args)
+	{
+		String url="https://1ryu4whyek.execute-api.us-west-2.amazonaws.com/dev/skus";
+		//HttpHelper mHttpHelper = new HttpHelper("https://localhost:8443/turtle/status");
+		HttpHelper mHttpHelper = new HttpHelper(url);
+		String report = mHttpHelper.getReport();
+		String[] format = report.split("\\n")[1].split("=")[1].split("\\.");
+		format[2] = "1";
+		System.out.println(format[0] + format[1] + String.format("%03d", Integer.parseInt(format[2])));
+	}
+}

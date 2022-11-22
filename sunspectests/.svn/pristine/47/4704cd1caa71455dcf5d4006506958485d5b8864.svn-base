@@ -1,0 +1,352 @@
+package com.powin.modbusfiles.apps;
+
+import static com.powin.modbusfiles.utilities.Constants.DISABLE;
+import static com.powin.modbusfiles.utilities.Constants.DMG_CONFIG_FILE;
+import static com.powin.modbusfiles.utilities.Constants.ENABLE;
+import static com.powin.modbusfiles.utilities.DateTimeHelper.YY_MM_DD_HH_MM;
+
+import java.nio.charset.Charset;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
+
+import com.google.protobuf.ByteString;
+import com.powin.dragon.app.demand.mgt.DemandManagementAppFactory;
+import com.powin.modbusfiles.modbus.ModbusPowinBlock;
+import com.powin.modbusfiles.power.MovePower;
+import com.powin.modbusfiles.reports.SystemInfo;
+import com.powin.modbusfiles.utilities.AppInjectionCommon;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.DateTimeHelper;
+import com.powin.modbusfiles.utilities.FileHelper;
+import com.powin.modbusfiles.utilities.PowinProperty;
+
+public class DemandManagementApp {
+	private static final int LOWER_PRIORITY_APP_PRIORITY = 46;
+	private static final int APP_PRIORITY = 40;
+	public final static Logger LOG = LogManager.getLogger();
+	private static int chargeCapacity = SystemInfo.getMaxAllowableChargePower(1);
+	private static int dischargeCapacity = SystemInfo.getMaxAllowableDischargePower(1);
+
+	protected static final String defaultConfigFileContents = "{\n" + "\"dcThreshHoldMW\":0.1,\n"
+			+ "\"lastCommunicatedTimestamp\":1585323159000,\n" + "\"enabled\" :true, \n"
+			+ "\"appConfigName\" :\"LONGTERMDCT\", \n" + "\"appConfigVersion\" :0\n" + "}";
+
+	private static String cleanPeakMeterSimulatorFilename = "/etc/powin/device/device-25-CleanPeakMeterSimulator.json";
+	protected static final String cleanPeakMeterSimulatorFileContents = "   {\n" + "  \"arrayIndex\" : 1,\n"
+			+ "  \"meterIndex\" : 1,\n" + "  \"defaultFrequency\" : 60.0,\n" + "  \"defaultkW\" : 100.0,\n"
+			+ "  \"defaultkVAr\" : 0.0,\n" + "  \"defaultAtoNVolts\" : 277.0,\n" + "  \"defaultBtoNVolts\" : 277.0,\n"
+			+ "  \"defaultCtoNVolts\" : 277.0,\n" + "  \"defaultAtoBVolts\" : 480.0,\n"
+			+ "  \"defaultBtoCVolts\" : 480.0,\n" + "  \"defaultCtoAVolts\" : 480.0,\n" + "  \"defaultAAmps\" : 0.0,\n"
+			+ "  \"defaultBAmps\" : 0.0,\n" + "  \"defaultCAmps\" : 0.0,\n" + "  \"meterRole\" : \"POI\",\n"
+			+ "  \"enabled\" : true,\n" + "  \"startPriority\" : 25,\n" + "  \"stopPriority\" : 25\n" + "  }";
+
+	public ZonedDateTime configureDemandManagementApp(boolean isEnable, String startTime, String endTime,
+			String demandChargeThreshholdMW, String appConfigName) {
+		LOG.trace("sendCommandToDemandManagementApp");
+		String commandText = defaultConfigFileContents;
+		commandText = AppInjectionCommon.editParameter(commandText, "enabled", String.valueOf(isEnable));
+		commandText = AppInjectionCommon.editParameter(commandText, "dcThreshHoldMW", demandChargeThreshholdMW);
+		commandText = AppInjectionCommon.editParameter(commandText, "appConfigName", "\"" + appConfigName + "\"");
+		commandText = AppInjectionCommon.editTimeParameter(commandText, "startTime", startTime);
+		commandText = AppInjectionCommon.editTimeParameter(commandText, "endTime", endTime);
+		commandText = AppInjectionCommon.editTimeParameter(commandText, "lastCommunicatedTimestamp", "now");
+		AppInjectionCommon.getGoblinCommandDepot().addCommand("admin",
+				AppInjectionCommon.buildCommand(isEnable, ByteString.copyFrom(commandText, Charset.defaultCharset()),
+						appConfigName, APP_PRIORITY, DemandManagementAppFactory.APPCODE));
+		CommonHelper.setTurtleFilePermissons(DMG_CONFIG_FILE, "777");
+		return ZonedDateTime.now();
+	}
+
+	public void disable() {
+		LOG.info("disabling demand management app");
+		configureDemandManagementApp(DISABLE, "", "", "", "");
+	}
+
+	public void enable() {
+		LOG.info("enabling demand management app");
+		configureDemandManagementApp(ENABLE, "", "", "", "");
+	}
+
+	public boolean configureCleanPeakMeterSimulator(String defaultKw) {
+		boolean restartNeeded = false;
+		if (!getDefaultKw().contentEquals(defaultKw)) {
+			restartNeeded = true;
+			LOG.info(cleanPeakMeterSimulatorFilename + " is being edited");
+			String activationFileContent = "";
+			activationFileContent = FileHelper.getConfigFileContents(cleanPeakMeterSimulatorFilename,
+					cleanPeakMeterSimulatorFileContents);
+			activationFileContent = FileHelper.editConfigFileContent(activationFileContent, "defaultkW",
+					String.valueOf(defaultKw));
+			FileHelper.writeConfigFile(PowinProperty.TURTLEHOST.toString(), cleanPeakMeterSimulatorFilename,
+					activationFileContent);
+			CommonHelper.quietSleep(2000);
+		}else {
+		LOG.info(cleanPeakMeterSimulatorFilename + " did not need to be edited");
+		}
+		return restartNeeded;
+	}
+
+	public boolean validateDemandManagement(ZonedDateTime initiationTime, ZonedDateTime startTime, ZonedDateTime endTime,
+			String dctMw, String defaultKw) {
+		// for duration of dmg
+		boolean timeNotExpired = true;
+		while (timeNotExpired) {
+			LOG.info("Waiting till {} for demand management app",
+					DateTimeHelper.getFormattedTime(startTime, "HH:mm"));
+			CommonHelper.quietSleep(1000);
+			timeNotExpired = ZonedDateTime.now().isBefore(startTime);
+		}
+		CommonHelper.quietSleep(35000);
+		timeNotExpired = true;
+		boolean isTestPass = true;
+		String koboldMessage = "";
+		String appFileContents = null;
+		String meterConfigFile = null;
+		String currentTime = "";
+		String dct = "";
+		List<String> errors = new ArrayList<String>();
+		int cycle=1;
+		while (timeNotExpired) {
+			// validate app json
+			isTestPass &= getAppConfigFileContents().contains("\"dcThreshHoldMW\":" + dctMw);
+			if(!isTestPass) {
+				LOG.info("FAIL - App file compare failed");
+			}
+			// validate meter
+			meterConfigFile = FileHelper.getConfigFileContents(cleanPeakMeterSimulatorFilename,
+					cleanPeakMeterSimulatorFileContents);
+			isTestPass &= meterConfigFile.contains("\"defaultkW\" : " + defaultKw);
+			// validate kobold message
+			koboldMessage = SystemInfo.getAppStatus(DemandManagementAppFactory.APPCODE);
+			currentTime = DateTimeHelper.getFormattedTime(initiationTime.truncatedTo(ChronoUnit.MINUTES), YY_MM_DD_HH_MM);
+
+			dct = String.valueOf(1000 * Double.parseDouble(dctMw));
+			isTestPass &= koboldMessage.contains("Demand Charge Threshold set to " + dct + "00kW at " + currentTime);
+			isTestPass &= koboldMessage.contains(
+					"Running from start time: " + DateTimeHelper.getFormattedTime(startTime, YY_MM_DD_HH_MM)
+							+ " to end time: " + DateTimeHelper.getFormattedTime(endTime, YY_MM_DD_HH_MM));
+//System will discharge: 50kW.
+			LOG.info("System power:{}",SystemInfo.getActualAcPower());
+			CommonHelper.quietSleep(20000);
+			timeNotExpired = ZonedDateTime.now().isBefore(endTime.minusSeconds(25));
+			if(!isTestPass) {
+				errors.add(koboldMessage);
+				isTestPass=true;
+			}
+			cycle++;
+		}
+		if (errors.size()>1) {
+			isTestPass=false;
+			LOG.info("FAIL - Expected Kobold message:{}", 
+					"Demand Charge Threshold set to " + dct + "00kW at " + currentTime + "Running from start time: "
+							+ DateTimeHelper.getFormattedTime(startTime, YY_MM_DD_HH_MM) + " to end time: "
+							+ DateTimeHelper.getFormattedTime(endTime, YY_MM_DD_HH_MM));
+			LOG.info("FAIL - Number of message errors {}", errors.size());
+			LOG.info("FAIL - List of message errors {}", CommonHelper.convertArrayListToString(errors, "\n"));
+			LOG.info("FAIL - App config file: {}", appFileContents);
+			LOG.info("FAIL - Device file: {}", meterConfigFile);
+		}
+		return isTestPass;
+	}
+
+	public String getAppConfigFileContents() {
+		String appFileContents;
+		CommonHelper.setSystemFilePermissons(DMG_CONFIG_FILE, "777");
+		appFileContents = FileHelper.getConfigFileContents(DMG_CONFIG_FILE, defaultConfigFileContents);
+		return appFileContents;
+	}
+
+	public boolean validateDmgPower(String dctKw, String netSiteLoadKw, String hpAppKw, String lpAppKw) {
+		LOG.info("Executing validateDmgPower dctKw:{}, netSiteLoadKw:{}, hpAppKw:{}, lpAppKw:{}", dctKw, netSiteLoadKw, hpAppKw, lpAppKw);
+		resetPowerApps();
+		// run power apps
+		boolean hpAppIsBasicOps = true;
+		if (!hpAppKw.contains("null")) {
+			movePowerBasicOp(hpAppKw);
+		}
+		if (!lpAppKw.contains("null")) {
+			movePowerPowerCommand(lpAppKw);
+		}
+		// Calculate expected power
+		int expectedAcPower = 0;
+		int dctKwInt = Integer.parseInt(dctKw);
+		int netSiteLoadKwInt = Integer.parseInt(netSiteLoadKw);
+		int delta = netSiteLoadKwInt - dctKwInt;
+		if (netSiteLoadKwInt > dctKwInt) {// Load > DCT
+			expectedAcPower = getExpectedPowerWhenLoadGtDct(hpAppKw, lpAppKw, delta, hpAppIsBasicOps);
+		} else {
+			expectedAcPower = getExpectedPowerWhenLoadLtDct(hpAppKw, lpAppKw, delta, hpAppIsBasicOps);
+		}
+		// Validate expected power matches actual power
+		LOG.info(" dctKw={},  loadKw={}", dctKw, netSiteLoadKwInt);
+		LOG.info("Higher Priority App kW:{},Lower Priority App kW:{},Actual AC Power: {}, Expected Ac Power: {}",
+				hpAppKw, lpAppKw, SystemInfo.getActualAcPower(), expectedAcPower);
+		boolean isTestPass;
+		isTestPass = CommonHelper.compareIntegers(SystemInfo.getActualAcPower(), expectedAcPower, 15, 2.01);
+		LOG.info("Test status:{}", isTestPass);
+		if (!isTestPass) {
+			LOG.info("FAIL - ");
+			LOG.info(" dctKw={},  loadKw={}", dctKw, netSiteLoadKwInt);
+			LOG.info("Higher Priority App kW:{},Lower Priority App kW:{},Actual AC Power: {}, Expected Ac Power: {}",
+					hpAppKw, lpAppKw, SystemInfo.getActualAcPower(), expectedAcPower);
+		}
+		resetPowerApps();
+		return isTestPass;
+	}
+
+	public void movePowerPowerCommand(String lpAppKw) {
+		int lpAppKwInt = Integer.parseInt(lpAppKw);
+		MovePower.setPowerPowerCommand(lpAppKwInt, 0, LOWER_PRIORITY_APP_PRIORITY);
+		CommonHelper.quietSleep(Constants.TWENTY_SECONDS);
+	}
+
+	public void movePowerBasicOp(String hpAppKw) {
+		int hpAppKwInt = Integer.parseInt(hpAppKw);
+		int targetSoc = getTargetSoC(hpAppKwInt);
+		MovePower.powerBasicOpPriorityPower(targetSoc, getWatts(hpAppKwInt));
+		CommonHelper.quietSleep(Constants.TWENTY_SECONDS);
+	}
+
+	public int getWatts(int hpAppKwInt) {
+		return 1000 * hpAppKwInt;
+	}
+
+	public int getTargetSoC(int hpAppKwInt) {
+		return isCharging(hpAppKwInt) ? 0 : 100;
+	}
+
+	public boolean isCharging(int hpAppKwInt) {
+		return hpAppKwInt > 0;
+	}
+
+	public void resetPowerApps() {
+		PowerCommandApp.disablePowerCommandApp(LOWER_PRIORITY_APP_PRIORITY);
+		ModbusPowinBlock.getModbusPowinBlock().disableBasicOp();
+	}
+
+	public int getExpectedPowerWhenLoadLtDct(String hpAppKw, String lpAppKw, int delta, boolean hpAppIsBasicOps) {
+		int expectedAcPower;
+		int lpAppKwInt;
+		int hpAppKwInt;
+		chargeCapacity = SystemInfo.getMaxAllowableChargePower(1);
+		dischargeCapacity = SystemInfo.getMaxAllowableDischargePower(1);
+		if (hpAppKw.toUpperCase().contains("NULL")) {
+			// if there is no lp
+			if (lpAppKw.toUpperCase().contains("NULL")) {
+				expectedAcPower = 0;
+			} else if ((lpAppKwInt = Integer.parseInt(lpAppKw)) < 0) { // If lp is a discharge
+				expectedAcPower = Math.max(delta, lpAppKwInt);
+				expectedAcPower = Math.max(expectedAcPower, -dischargeCapacity);
+			} else {// If lp is a charge
+				expectedAcPower = Math.min(lpAppKwInt, chargeCapacity);
+			}
+		} else if ((hpAppKwInt = Integer.parseInt(hpAppKw)) > 0) {
+			// if there is no lp
+			if (lpAppKw.toUpperCase().contains("NULL")) {
+				expectedAcPower = Math.min(hpAppKwInt, chargeCapacity);
+			} else if ((lpAppKwInt = Integer.parseInt(lpAppKw)) > 0) { // If lp is a discharge
+				expectedAcPower = hpAppKwInt;
+				if (hpAppIsBasicOps)
+					expectedAcPower = Math.min(expectedAcPower + lpAppKwInt, chargeCapacity);
+				else
+					expectedAcPower = Math.min(hpAppKwInt, chargeCapacity);
+
+			} else {// If lp is a charge
+				expectedAcPower = hpAppKwInt;
+			}
+		} else {
+			if (lpAppKw.toUpperCase().contains("NULL")) {
+				expectedAcPower = Math.max(hpAppKwInt, -dischargeCapacity);
+			} else if ((lpAppKwInt = Integer.parseInt(lpAppKw)) > 0) { // If lp is a discharge
+				expectedAcPower = Math.max(hpAppKwInt, -dischargeCapacity);
+			} else {// If lp is a charge
+				if (hpAppKwInt > delta) {
+					if (hpAppIsBasicOps)
+						expectedAcPower = Math.max(hpAppKwInt + lpAppKwInt, delta);
+					else
+						expectedAcPower = Math.max(hpAppKwInt, -dischargeCapacity);
+				} else {
+					if (hpAppIsBasicOps)
+						expectedAcPower = Math.max(hpAppKwInt, -dischargeCapacity);
+					else
+						expectedAcPower = Math.max(hpAppKwInt, -dischargeCapacity);
+				}
+			}
+		}
+		return expectedAcPower;
+	}
+
+	public int getExpectedPowerWhenLoadGtDct(String hpAppKw, String lpAppKw, int delta, boolean hpAppIsBasicOps) {
+		int expectedAcPower;
+		int lpAppKwInt;
+		int hpAppKwInt;
+		chargeCapacity = SystemInfo.getMaxAllowableChargePower(1);
+		dischargeCapacity = SystemInfo.getMaxAllowableDischargePower(1);
+
+		// discharge
+		if (hpAppKw.toUpperCase().contains("NULL")) {
+			// if there is no lp
+			if (lpAppKw.toUpperCase().contains("NULL")) {
+				expectedAcPower = delta;
+			} else if ((lpAppKwInt = Integer.parseInt(lpAppKw)) > 0) { // If lp is a discharge
+				expectedAcPower = delta + lpAppKwInt;
+			} else {// If lp is a charge
+				expectedAcPower = delta;
+			}
+		} else if ((hpAppKwInt = Integer.parseInt(hpAppKw)) > 0) {
+			// if there is no lp
+			if (lpAppKw.toUpperCase().contains("NULL")) {
+				expectedAcPower = Math.max(hpAppKwInt, delta);
+			} else if ((lpAppKwInt = Integer.parseInt(lpAppKw)) > 0) { // If lp is a discharge
+				expectedAcPower = Math.max(hpAppKwInt, delta);
+				if (hpAppIsBasicOps) {
+					expectedAcPower = Math.min(expectedAcPower + lpAppKwInt, chargeCapacity);
+				} else
+					expectedAcPower = Math.min(hpAppKwInt, chargeCapacity);
+
+			} else {// If lp is a charge
+				expectedAcPower = Math.max(hpAppKwInt, delta);
+			}
+		} else {
+			// If hp is basic ops, stacking
+			// if there is no lp
+
+			if (lpAppKw.toUpperCase().contains("NULL")) {
+				expectedAcPower = hpAppKwInt;
+			} else if ((lpAppKwInt = Integer.parseInt(lpAppKw)) > 0) { // If lp is a discharge
+				expectedAcPower = hpAppKwInt;
+			} else {// If lp is a charge
+				if (hpAppIsBasicOps)
+					expectedAcPower = Math.max(hpAppKwInt + lpAppKwInt, -dischargeCapacity);
+				else
+					expectedAcPower = Math.max(hpAppKwInt, -dischargeCapacity);
+			}
+		}
+		return expectedAcPower;
+	}
+
+	public static String getDefaultKw() {
+		String activationFileContent = "";
+		activationFileContent = FileHelper.getConfigFileContents(cleanPeakMeterSimulatorFilename,
+				cleanPeakMeterSimulatorFileContents);
+		JSONParser parser = new JSONParser();
+		JSONObject json = null;
+		try {
+			json = (JSONObject) parser.parse(activationFileContent);
+		} catch (ParseException e) {
+			LOG.error("Unable to parse file {}", e.getMessage());
+		}
+
+		return json.get("defaultkW").toString();
+	}
+
+}

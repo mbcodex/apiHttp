@@ -1,0 +1,77 @@
+package com.powin.modbusfiles.db.api;
+
+import java.io.Serializable;
+
+public class TestTime  implements Serializable {
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = -842029420909948816L;
+	private Integer id;
+	private String testName;
+	private Long averageRuntime;
+
+	public TestTime(String name, Long avgRuntime) {
+		this.testName = name.replaceAll("\\(\\)", "");
+		this.averageRuntime = avgRuntime;
+	}
+
+	public TestTime(int id, String name, Long avgRuntime) {
+		this(name, avgRuntime);
+		this.id = id;
+	}
+
+	public Integer getId() {
+		return id;
+	}
+
+	public void setId(Integer id) {
+		this.id = id;
+	}
+
+	public String getTestName() {
+		return testName;
+	}
+
+	public void setTestName(String name) {
+		this.testName = name.replaceAll("\\(\\)", "");
+	}
+
+	public Long getAverageRuntime() {
+		return averageRuntime;
+	}
+
+	public void setAverageRuntime(Long averageRuntime) {
+		this.averageRuntime = averageRuntime;
+	}
+
+	@Override
+	public String toString() {
+		return String.format("TestTimes [id=%s, testName=%s, averageRuntime=%s]", id, testName, averageRuntime);
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((testName == null) ? 0 : testName.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		TestTime other = (TestTime) obj;
+		if (testName == null) {
+			if (other.testName != null)
+				return false;
+		} else if (!testName.equals(other.testName))
+			return false;
+		return true;
+	}
+}

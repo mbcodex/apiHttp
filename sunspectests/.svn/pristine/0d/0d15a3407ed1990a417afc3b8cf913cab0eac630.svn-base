@@ -1,0 +1,238 @@
+package com.powin.modbusfiles.apps;
+
+import java.nio.charset.Charset;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.google.protobuf.ByteString;
+import com.powin.dragon.app.basicop.BasicOpAppFactory;
+import com.powin.dragon.app.powercommand.PowerCommandAppFactory;
+import com.powin.dragon.app.ramprate1.RampRate1AppFactory;
+import com.powin.modbusfiles.modbus.ModbusPowinBlock;
+import com.powin.modbusfiles.reports.SystemInfo;
+import com.powin.modbusfiles.utilities.AppInjectionCommon;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.DateTimeHelper;
+import com.powin.modbusfiles.utilities.FileHelper;
+import com.powin.modbusfiles.utilities.MathHelper;
+import com.powin.modbusfiles.utilities.Result;
+
+public class RampRate1App {
+	private final static Logger LOG = LogManager.getLogger();
+	public static String testresultFolderpath = "/home/powin/";
+	private static String cStationCode;
+	private static int cKwPerStep;
+	private static int cStepDurationInMs;
+	private int appPriority = 3;
+	private String cTestFilePath;
+	static {
+		cStationCode = SystemInfo.getStationCode();
+	}
+
+	public RampRate1App(int kwperStep, int stepDuration) {
+		setKwPerStep(kwperStep);
+		setStepDurationInMs(stepDuration);
+	}
+
+	public static int getKwPerStep() {
+		return cKwPerStep;
+	}
+
+	public void setKwPerStep(int kwPerStep) {
+		cKwPerStep = kwPerStep;
+	}
+
+	public static int getStepDurationInMs() {
+		return cStepDurationInMs;
+	}
+
+	public void setStepDurationInMs(int stepDurationInMs) {
+		cStepDurationInMs = stepDurationInMs;
+	}
+
+	protected static final String tempConfigFileContents = "{\n" + "  \"enabled\" : ${},\n"
+			+ "  \"kwperStep\" : {kwperStep},\n" + "  \"stepDurationInMilliseconds\" : {stepDurationInMilliseconds},\n"
+			+ "  \"appConfigName\" : \"{appConfigName}\",\n" + "  \"appConfigVersion\" : 0\n" + "}\n";
+
+	private void sendCommandToRampRate1App(boolean isEnable) {
+		LOG.trace("Entering RampRate1App");
+		String commandText = setEnabledAndOtherParams(isEnable, getKwPerStep(), getStepDurationInMs());
+		String appConfigName = getKwPerStep() + "-per-" + getStepDurationInMs();
+		appPriority = FileHelper.getPriority(RampRate1AppFactory.APPCODE, Constants.RAMP_RATE_PRIORITY, Constants.HEED);
+		AppInjectionCommon.getGoblinCommandDepot().addCommand("admin",
+				AppInjectionCommon.buildCommand(isEnable, ByteString.copyFrom(commandText, Charset.defaultCharset()),
+						appConfigName, appPriority, RampRate1AppFactory.APPCODE));
+		CommonHelper.sleep(Constants.TEN_SECONDS);
+		LOG.trace("Exiting RampRate1App");
+	}
+
+	protected String setEnabledAndOtherParams(boolean isEnable, int kwperStep, int stepDurationInMilliseconds) {
+		return tempConfigFileContents.replace("${}", String.valueOf(isEnable))
+				.replace("{kwperStep}", String.valueOf(kwperStep))
+				.replace("{stepDurationInMilliseconds}", String.valueOf(stepDurationInMilliseconds))
+				.replace("{appConfigName}", kwperStep + "-per-" + stepDurationInMilliseconds);
+	}
+
+	public void enable() {
+		sendCommandToRampRate1App(Constants.ENABLE);
+	}
+
+	public void disable() {
+		sendCommandToRampRate1App(Constants.DISABLE);
+	}
+
+	public boolean c3305_ChargeWithPowerControl(int powerKw) {
+		return testWithPowerControlApp(-Math.abs(powerKw));
+	}
+
+	public boolean c3316_DischargeWithPowerControl(int powerKw) {
+		return testWithPowerControlApp(Math.abs(powerKw));
+	}
+
+	public boolean c3318_ChargeWithBasicOps(int powerKw) {
+		return testWithBasicOps(-Math.abs(powerKw));
+	}
+
+	public boolean c3319_DischargeWithBasicOps(int powerKw) {
+		return testWithBasicOps(Math.abs(powerKw));
+	}
+
+	private boolean validateRampRate(long startTimeMs, int expectedTimeSpan, int powerKw) {
+		getActualPowerDistribution(expectedTimeSpan, startTimeMs);
+		List<String> testDataFile = FileHelper.readFileToList(cTestFilePath);
+		CommonHelper.removePsqlArtefacts(testDataFile);
+		List<List<Double>> actualPowerDistribution = CommonHelper.normalizeTimestamps(testDataFile);
+		actualPowerDistribution = CommonHelper.removeTrailingMaxValues(actualPowerDistribution, powerKw, true);
+		boolean isTestPass = RampRate1App.validatePowerDistribution(actualPowerDistribution, powerKw);
+		return isTestPass;
+	}
+
+	public static boolean validatePowerDistribution(List<List<Double>> actualPowerDistribution, int powerKw) {
+		boolean isTestPass = true;
+		boolean charge = powerKw < 0 ? true : false;
+		double slopeActual = MathHelper.bestApproximate1(actualPowerDistribution)[0];
+		double slopeExpected = 0;
+		double numberOfSteps = Math.abs(powerKw) / getKwPerStep();
+		int expectedTimeSpan = (int) numberOfSteps * getStepDurationInMs();
+		if (charge) {
+			slopeExpected = (double) -Math.abs(powerKw) / expectedTimeSpan;
+		} else
+			slopeExpected = (double) Math.abs(powerKw) / expectedTimeSpan;
+		int slopeExpectedInt = (int) (100000 * slopeExpected);
+		int slopeActualInt = (int) (100000 * slopeActual);
+		isTestPass = CommonHelper.compareIntegers(slopeExpectedInt, slopeActualInt, 20, 0.01);
+		LOG.info("DERATE: slopeExpected={}, slope actual={}", slopeExpectedInt, slopeActualInt);
+		return isTestPass;
+	}
+
+	public void getActualPowerDistribution(int expectedTimeSpan, long startTime) {
+		long endTime = startTime + expectedTimeSpan + 5000;// Tacking an extra 5 seconds after theoretical end time
+		ZonedDateTime zdtStartTime = ZonedDateTime.ofInstant(Instant.ofEpochMilli(startTime), ZoneId.systemDefault());
+		ZonedDateTime zdtEndTime = ZonedDateTime.ofInstant(Instant.ofEpochMilli(endTime), ZoneId.systemDefault());
+		boolean timerExpired = false;
+		while (!timerExpired) {
+			CommonHelper.quietSleep(1000);
+			timerExpired = System.currentTimeMillis() > endTime;
+		}
+		cTestFilePath = String.join("_", testresultFolderpath, "rr1", String.valueOf(cKwPerStep),
+				String.valueOf(cStepDurationInMs), String.valueOf(startTime), ".txt");
+		getTestDataFromDatabaseToFiles(zdtStartTime, zdtEndTime, cTestFilePath);
+	}
+
+	// Run Psql query to get test data and pipe to file
+	public static void getTestDataFromDatabaseToFiles(ZonedDateTime startTime, ZonedDateTime endTime, String filePath) {
+		String startTimeString = DateTimeHelper.getFormattedTime(startTime.truncatedTo(ChronoUnit.SECONDS),
+				Constants.YYYY_MM_DD_HH_MM_SS);
+		String endTimeString = DateTimeHelper.getFormattedTime(endTime.truncatedTo(ChronoUnit.SECONDS),
+				Constants.YYYY_MM_DD_HH_MM_SS);
+		int arrayIndex = 1;
+		getArrayDataFromDb(arrayIndex, startTimeString, endTimeString, filePath);
+	}
+
+//TODO:This query is quite similar to other ones in the code. Extract to a method
+	public static void getArrayDataFromDb(int arrayIndex, String testStart, String testEnd, String testresultFilepath) {
+		String sqlQuery = "\"select extract(EPOCH FROM  reporttime)*1000,kw " + "from kobold2.fullreportheader r "
+				+ "inner join " + "kobold2.fullarrayreport a " + "on a.reportid=r.reportid "
+				+ "where reporttime at time zone 'utc' between '" + testStart + "' and '" + testEnd + "'"
+				+ " and arrayid in" + " (select arrayid from kobold2.arrays arr "
+				+ " inner join kobold2.blocks b on arr.blockid = b.blockid "
+				+ " inner join kobold2.stations s on s.stationid=b.stationid " + " where s.stationcode ='"
+				+ cStationCode + "'" + " and arr.arrayindex=" + arrayIndex + ") " + " order by reporttime asc;\"";
+		CommonHelper.getPostgresQueryResults(sqlQuery, testresultFilepath);
+	}
+
+	private boolean testWithPowerControlApp(int powerKw) {
+		boolean isTestPass = false;
+		boolean isPowerMoving = movePowerWithPowerCommandApp(powerKw);
+		if (isPowerMoving) {
+			long startTime = System.currentTimeMillis();
+			int expectedTimeSpan = getExpectedTimeSpanForPowerCommandApp(powerKw);
+			isTestPass = validateRampRate(startTime, expectedTimeSpan, powerKw);
+		}
+		return isTestPass;
+	}
+
+	private int getExpectedTimeSpanForPowerCommandApp(int powerKw) {
+		double numberOfSteps = Math.abs(powerKw) / getKwPerStep();
+		int expectedTimeSpan = (int) numberOfSteps * getStepDurationInMs();
+		return expectedTimeSpan;
+	}
+
+	private boolean movePowerWithPowerCommandApp(int powerKw) {
+		PowerCommandApp.sendCommandToPowerCommandApp(powerKw, 0, Constants.ENABLE);
+		return isPowerCommandAppEnabled();
+	}
+
+	private boolean testWithBasicOps(int powerKw) {
+		boolean isPowerMoving = movePowerWithBasicOps(powerKw);
+		boolean isTestPass = false;
+		if (isPowerMoving) {
+			int expectedTimeSpan = getExpectedTimeSpanForBasicOps(powerKw);
+			long timeSpan = System.currentTimeMillis();
+			isTestPass = validateRampRate(timeSpan, expectedTimeSpan, powerKw);
+		}
+		return isTestPass;
+	}
+
+	private int getExpectedTimeSpanForBasicOps(int powerKw) {
+		int expectedTimeSpan = Math.abs(powerKw) / getKwPerStep() * getStepDurationInMs();
+		if (Math.abs(powerKw) % getKwPerStep() == 0) {
+			expectedTimeSpan -= getStepDurationInMs();
+		}
+		return expectedTimeSpan;
+	}
+
+	private boolean movePowerWithBasicOps(int powerKw) {
+		int targetSoc = powerKw > 0 ? 0 : 100;
+		ModbusPowinBlock.getModbusPowinBlock().setBasicOpPriorityPower(powerKw * 1000, targetSoc);
+		boolean basicOpsAppEnabled = isBasicOpsAppEnabled();
+		if (!basicOpsAppEnabled) {
+			LOG.error("Failed to enable BasicOps app, test abort.");
+
+		}
+		return basicOpsAppEnabled;
+	}
+
+	private boolean isBasicOpsAppEnabled() {
+		Result isEnabled = AppInjectionCommon.verifyAppEnabledStatus(BasicOpAppFactory.APPCODE, Constants.ENABLED);
+		if (!isEnabled.isAllTestsPass()) {
+			LOG.error("Failed to enable Basic Ops app, test abort.");
+		}
+		return isEnabled.isAllTestsPass();
+	}
+
+	private boolean isPowerCommandAppEnabled() {
+		Result isEnabled = AppInjectionCommon.verifyAppEnabledStatus(PowerCommandAppFactory.APPCODE, Constants.ENABLED);
+		if (!isEnabled.isAllTestsPass()) {
+			LOG.error("Failed to enable PowerCommand app, test abort.");
+		}
+		return isEnabled.isAllTestsPass();
+	}
+}

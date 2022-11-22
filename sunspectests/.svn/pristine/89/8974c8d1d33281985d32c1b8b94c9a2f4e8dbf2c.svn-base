@@ -1,0 +1,189 @@
+package com.powin.modbusfiles.apps;
+
+import java.io.UnsupportedEncodingException;
+import java.math.BigDecimal;
+import java.nio.charset.Charset;
+import java.util.regex.Pattern;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.google.protobuf.ByteString;
+import com.powin.dragon.app.frequencydroopcurve.FrequencyDroopAppFactory;
+import com.powin.modbusfiles.reports.ArrayPcsData;
+import com.powin.modbusfiles.reports.Lastcall;
+import com.powin.modbusfiles.reports.SystemInfo;
+import com.powin.modbusfiles.utilities.AppInjectionCommon;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.FileHelper;
+import com.powin.modbusfiles.utilities.PowinProperty;
+import com.powin.modbusfiles.utilities.SimulatedValuesInjector;
+import com.powin.modbusfiles.utilities.StringUtils;
+import com.powin.modbusfiles.utilities.TimeOut;
+
+/**
+ * This class will populate the /etc/powin/app/app-3-FD00001.json with the table
+ * defined by tempConfigFileContents. The Meter simulator is then injected with
+ * the frequencies and the expected power output is compared against the actual
+ * power. Frequencies outside the range of the table do not move power.
+ * TestRail:
+ * https://powin.testrail.io/index.php?/suites/view/1&group_by=cases:section_id&group_id=86&group_order=asc&display_deleted_cases=0
+ *
+ * @param args
+ * @throws UnsupportedEncodingException
+ */
+public class FrequencyDroopApp {
+	private final static Logger LOG = LogManager.getLogger();
+
+	protected static final String tempConfigFileContents = "{\n" + "  \"frequencyVsPower\" : {\n"
+			+ "  \"59.0\" : 60.0, \n" + "  \"59.2\" : 50.0, \n" + "  \"59.6\" : 40.0, \n" + "  \"59.8\" : 40.0, \n"
+			+ "  \"59.9\" : 40.0, \n" + "  \"60.0\" : 0.0, \n" + "  \"60.1\" : -40.0 },\n"
+
+			+ "  \"enabled\" : ${},\n" + "  \"pcsActionDelay\" : 250,\n" + "  \"entityKey\" : \""
+			+ SystemInfo.getEntityKey(SystemInfo.EntityType.BlockMeter) + "\",\n"
+			+ "  \"appConfigName\" : \"default\",\n" + "  \"frequencyDroopAppMode\" : \"Set\",\n"
+			+ "  \"appConfigVersion\" : 0\n" + "}\n";
+
+	private static final BigDecimal defaultFrequency = BigDecimal.valueOf(60);
+
+	public void sendCommandToFrequencyDroopApp(boolean isEnable) {
+		LOG.trace("Entering sendCommandToFrequencyDroopApp");
+		String commandText = setEnabledValue(isEnable);
+		String appConfigName = StringUtils.getMatchString(commandText, "default|instant", Pattern.UNIX_LINES,
+				StringUtils.ReturnGroup.NONE, null);
+		AppInjectionCommon.getGoblinCommandDepot()
+				.addCommand("admin",
+						AppInjectionCommon.buildCommand(isEnable,
+								ByteString.copyFrom(commandText, Charset.defaultCharset()), appConfigName,
+								FileHelper.getPriority(FrequencyDroopAppFactory.APPCODE,
+										Constants.FREQUENCY_DROOP_PRIORITY, Constants.HEED),
+								FrequencyDroopAppFactory.APPCODE));
+		LOG.trace("Exiting sendCommandToFrequencyDroopApp");
+	}
+
+	protected String setEnabledValue(boolean isEnable) {
+		return tempConfigFileContents.replace("${}", String.valueOf(isEnable)).replace("{entityKey}",
+				SystemInfo.getEntityKey(SystemInfo.EntityType.BlockMeter));
+	}
+
+	public void enable() {
+		sendCommandToFrequencyDroopApp(Constants.ENABLE);
+	}
+
+	public void disable() {
+		sendCommandToFrequencyDroopApp(Constants.DISABLE);
+	}
+
+	private boolean setFrequencyAndVerifyPower(BigDecimal frequencyReceived, int powerSet) {
+		boolean ret = true;
+		ArrayPcsData pcsData = null;
+		String status = null;
+		String startStatus = null;
+		LOG.info("setFrequencyAndVerifyPower frequencyReceived: {}, powerSet: {}", frequencyReceived, powerSet);
+		startStatus = SystemInfo.getAppStatus(FrequencyDroopAppFactory.APPCODE);
+		LOG.info("Starting status: {}", startStatus);
+
+		if (SimulatedValuesInjector.setFD00001Frequency(frequencyReceived) == false) {
+			LOG.error("Failed to set frequency, test abort.");
+			ret = false;
+		}
+
+		if (ret) {
+			LOG.info("Frequency set: {}Hz, expected Power: {}kW", frequencyReceived, powerSet);
+			CommonHelper.waitForSystemReady();
+			status = waitForStatusChange(frequencyReceived, startStatus);
+			pcsData = Lastcall.getArrayPcsData(PowinProperty.ARRAY_INDEX.intValue(),
+					Integer.parseInt(PowinProperty.PCS_INDEX.toString()));
+		}
+
+		if (null == pcsData) {
+			LOG.error("Failed to get PCS data, test abort.");
+			ret = false;
+		} else {
+			LOG.info("app status: {}, PCS Power {}", status, pcsData.getAcRealPowerSettingKW());
+		}
+
+		if (ret) {
+			if (!validateRealPower(powerSet, pcsData)) {
+				LOG.error("Fail: PCS power is {}, but it should be {}.", pcsData.getAcRealPowerSettingKW(), powerSet);
+				ret = false;
+			} else if (status.contains(frequencyReceived.setScale(2).toString()) == false) {
+				LOG.error("Fail: FrequencyDroopApp status string does not contain {} and {}.",
+						frequencyReceived.setScale(2).toString(), powerSet);
+				ret = false;
+			} else {
+				LOG.info("PASS: pcs power equals power set by frequency droop.");
+			}
+
+		}
+		if (!ret) {
+			CommonHelper.pressEnterToContinue();
+		}
+		return ret;
+	}
+
+	private String waitForStatusChange(BigDecimal frequencyReceived, String startStatus) {
+		String status;
+		status = SystemInfo.getAppStatus(FrequencyDroopAppFactory.APPCODE);
+		String timer = TimeOut.create(Constants.ONE_MINUTE_SECONDS);
+		while (!TimeOut.isExpired(timer) && frequencyReceived.compareTo(defaultFrequency) != 0 && status.equals(startStatus)) {
+			status = SystemInfo.getAppStatus(FrequencyDroopAppFactory.APPCODE);
+			CommonHelper.quietSleep(Constants.ONE_SECOND);
+		}
+		TimeOut.remove(timer);
+		return status;
+	}
+
+	private boolean validateRealPower(int powerSet, ArrayPcsData pcsData) {
+		int retry = 0;
+		boolean isCorrectPowerMoving = pcsData.getAcRealPowerSettingKW() == powerSet;
+		while (!isCorrectPowerMoving && retry < 3) {
+			CommonHelper.quietSleep(Constants.ONE_SECOND);
+			isCorrectPowerMoving = pcsData.getAcRealPowerSettingKW() != powerSet;
+			retry++;
+		}
+		return isCorrectPowerMoving;
+	}
+
+	public boolean c3306Test() {
+		return setFrequencyAndVerifyPower(new BigDecimal("59.8"), 40);
+	}
+
+	public boolean c3307Test() {
+		return setFrequencyAndVerifyPower(new BigDecimal("60"), 0);
+	}
+
+	public boolean c3308Test() {
+		return setFrequencyAndVerifyPower(new BigDecimal("60.1"), -40);
+	}
+
+	/**
+	 * https://powin.testrail.io/index.php?/cases/view/3343
+	 *
+	 * @return
+	 */
+	public boolean c3343Test() {
+		return setFrequencyAndVerifyPower(new BigDecimal("59.0"), 60);
+	}
+
+	public boolean c3344Test() {
+		return setFrequencyAndVerifyPower(new BigDecimal("59.95"), 20);
+	}
+
+	public boolean c3345Test() {
+		return setFrequencyAndVerifyPower(new BigDecimal("58.9"), 0);
+	}
+
+	public boolean c3346Test() {
+		return setFrequencyAndVerifyPower(new BigDecimal("60.2"), 0);
+	}
+
+	public static void main(String[] args) {
+		SystemInfo.getEntityKey(SystemInfo.EntityType.BlockMeter);
+		FrequencyDroopApp app = new FrequencyDroopApp();
+		// app.enable();
+		app.c3344Test();
+		app.disable();
+	}
+}

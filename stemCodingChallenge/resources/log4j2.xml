@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="warn" >
+	<Appenders>
+		<RollingFile name="file"
+			fileName="./target/test-classes/stem.log"
+			filePattern="./target/test-classes/stem-%d{yyyy-MM-dd}.log.gz">
+			<PatternLayout>
+				<Pattern>%d{yyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} -
+					%msg%n</Pattern>
+			</PatternLayout>
+			<Policies>
+				<TimeBasedTriggeringPolicy />
+			</Policies>
+		</RollingFile>
+		<Console name="Console" target="SYSTEM_OUT">
+			<PatternLayout
+				pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n" />
+		</Console>
+		<Console name="Override" target="SYSTEM_OUT">
+			<PatternLayout
+				pattern="%d{HH:mm:ss.SSS} [%t] %ex{0} %-5level %logger{36} - %msg%n" />
+		</Console>
+	</Appenders>
+	<Loggers>
+
+		<Root level="info">
+			<!-- <AppenderRef ref="console"/> -->
+			<AppenderRef ref="Override" />
+		</Root>
+	</Loggers>
+</Configuration>

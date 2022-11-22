@@ -1,0 +1,212 @@
+package com.powin.modbusfiles.derating;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.jcraft.jsch.JSchException;
+import com.powin.modbusfiles.configuration.StackType;
+import com.powin.modbusfiles.reports.SystemInfo;
+import com.powin.modbusfiles.utilities.CommandHelper;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.PowinProperty;
+import com.powin.modbusfiles.utilities.Result;
+
+public class CellTemperatureDerate {
+	private final static Logger LOG = LogManager.getLogger();
+	public static final int ONE_SECOND = 1000;
+	// Temperature derating for StackType.PROTO_S22_2252H_1x225A_1000V_C271_DPS500
+	public static final String chargeDeratingStrategySet = 	"5,0.0|" + 
+														"10,0.35|" + 
+														"15,0.5|" + 
+														"20,0.75|" +
+														"25,0.8|" +
+														"45,0.8|" + 
+														"50,0.0";
+	public static final String dischargeDeratingStrategySet = 	"0,0.0|" + 
+																"5,1.0|" + 
+																"45,1.0|" + 
+																"50,0.0";
+	public static int cArrayCount = 1;
+	public static int cStackCountPerArray = 1;
+	public final static int maxChargeCurrentPerStackAmps = 150;
+	public final static int maxDischargeCurrentPerStackAmps = 150;
+	public final static int maxChargePowerPerStackKw = 450;
+	static String cStationCode;
+	private static boolean lowTemperatureAlarmNotCleared=false;
+	private static boolean highTemperatureAlarmNotCleared =false;;
+	static {
+		cStationCode = SystemInfo.getStationCode();
+	}
+
+	public void init(int arrayCount, int stackCountPerArray) throws IOException, InterruptedException, JSchException {
+		cArrayCount = arrayCount;
+		cStackCountPerArray = stackCountPerArray;
+		LOG.info("init - creating system with {} arrays and {} strings", arrayCount, stackCountPerArray);
+		boolean isTomcatRestartRequired = CommonHelper.setupSystem(SystemInfo.getStationCode(),
+				StackType.PROTO_S22_2252H_1x225A_1000V_C271_DPS500, arrayCount, stackCountPerArray,
+				stackCountPerArray * maxChargePowerPerStackKw, stackCountPerArray * maxChargeCurrentPerStackAmps);
+		isTomcatRestartRequired |= CommonHelper.enableTurtleTools();
+		if (isTomcatRestartRequired) {
+			CommonHelper.restartTurtleTomcat();
+			CommonHelper.quietSleep(Constants.TEN_SECONDS);
+		}
+	}
+
+	public static boolean validateTestData(boolean charge, double temperature, int tolerance, int temperatureTriggerArrayIndex) {
+		boolean isTestPass = true;
+		for (int arrayIndex = 1; arrayIndex <= cArrayCount; arrayIndex++) {
+			LOG.info("validating array#{}", arrayIndex);
+			Result validateCellTemperatureDerateForArray = Result.getInstance(true);
+			validateCellTemperatureDerateForArray = validateCvdArray(charge, tolerance, arrayIndex, temperature, temperatureTriggerArrayIndex);
+			validateCellTemperatureDerateForArray.setTolerancePercentage(3.0);
+			boolean testPassedForArray = validateCellTemperatureDerateForArray.isWithinTolerance();
+			isTestPass &= testPassedForArray;
+		}
+		return isTestPass;
+	}
+
+	public static boolean triggerDerate(int temperatureTriggerArrayIndex) throws Exception {
+		boolean isTestPass = true;
+		for (double temperature = -5; temperature < 59; temperature++) {
+			setTemperatureViaTurtleTools(temperature, temperatureTriggerArrayIndex, 1, 1, 1);
+			CommonHelper.quietSleep(20 * ONE_SECOND);
+			isTestPass &= validateTestData(true, temperature, 10, temperatureTriggerArrayIndex);
+			isTestPass &= validateTestData(false, temperature, 10, temperatureTriggerArrayIndex);
+		}
+		for (double temperature = 58; temperature > 47; temperature--) {
+			setTemperatureViaTurtleTools(temperature, temperatureTriggerArrayIndex, 1, 1, 1);
+			CommonHelper.quietSleep(40 * ONE_SECOND);
+			isTestPass &= validateTestData(true, temperature, 10, temperatureTriggerArrayIndex);
+			isTestPass &= validateTestData(false, temperature, 10, temperatureTriggerArrayIndex);
+		}
+		CommonHelper.quietSleep(2 * ONE_SECOND);
+		return isTestPass;
+	}
+
+	public static void setSystemTemperature(double temperature, int arrayCount, int stackCountPerArray, int bpCount,
+			int cgCount) throws Exception {
+		for (int arrayIndex = 1; arrayIndex <= arrayCount; arrayIndex++) {
+			for (int stackIndex = 1; stackIndex <= stackCountPerArray; stackIndex++) {
+				for (int bpIndex = 1; bpIndex <= bpCount; bpIndex++) {
+					for (int cgIndex = 1; cgIndex <= cgCount; cgIndex++) {
+						setTemperatureViaTurtleTools(temperature, arrayIndex, stackIndex, bpIndex, cgIndex);
+					}
+				}
+			}
+		}
+	}
+
+	public static void setTemperatureViaTurtleTools(double temperature, int arrayIndex, int stringIndex, int bpIndex,
+			int cgIndex) throws Exception {
+		// http://localhost:8080/turtle/tools/controls/bms/stacksim/force/array/1/string/1/bp/1/cg/1/temperature/45
+		String url = PowinProperty.TURTLE_URL + String.join("/", "turtle", "tools", "controls", "bms", "stacksim",
+				"force", "array", String.valueOf(arrayIndex), "string", String.valueOf(stringIndex), "bp",
+				String.valueOf(bpIndex), "cg", String.valueOf(cgIndex), "temperature", String.valueOf(temperature));
+		CommandHelper.executeCommand(url);
+	}
+
+	public static double getExpectedDerateFactor(int arrayIndex, double temperature) {
+		double derateFactor = 0.0;
+		double pRate = CellTemperatureDerateHelper.getApplicablePRate(chargeDeratingStrategySet, temperature);
+		int powerCorrespondingToPRate = convertPRateToKw(pRate);
+		int maxSystemPower = maxChargeCurrentPerStackAmps * getNominalStackVoltage() / 1000;
+		derateFactor = powerCorrespondingToPRate < maxSystemPower ? pRate : 1;
+		return derateFactor;
+	}
+
+	public static int getNominalStackVoltage() {
+		int CellAh = 271;
+		int CellNominalVoltage = 3220;
+		int CellsInStack = 264;
+		double nominalStackVoltage = CellNominalVoltage * CellsInStack / 1000;
+		return (int) nominalStackVoltage;
+	}
+
+	public static int convertPRateToKw(double pRate) {
+		int CellAh = 271;
+		int CellNominalVoltage = 3220;
+		int CellsInStack = 264;
+		double maxPower = CellAh * CellNominalVoltage * CellsInStack / 1000000 * pRate;
+		return (int) maxPower;
+	}
+
+	public static Result validateCvdArray(boolean isCharging, int tolerance, int arrayIndex, double temperature, int temperatureTriggerArrayIndex) {
+		Result isTestPass = Result.getInstance(true);
+		isTestPass.add(validateArrayDerateStrategy(isCharging, arrayIndex, tolerance, temperature, temperatureTriggerArrayIndex), "");
+		return isTestPass;
+	}
+
+	public static boolean validateArrayDerateStrategy(boolean isCharging, int arrayIndex, int tolerance, double temperature, int temperatureTriggerArrayIndex) {
+		boolean isTestPass = true;
+		double pRate =1;
+		int maxSystemPower=0;
+		double actualMaxPowerCapacity=0.0;
+		if(temperatureInLowTemperatureAlarmBand(temperature)) {
+			pRate=0;
+		}
+		else if(temperatureInHighTemperatureAlarmBand(temperature)) {
+			pRate=0;
+		}
+		else {
+			if(arrayIndex==temperatureTriggerArrayIndex) {
+				if(isCharging) {
+					pRate= CellTemperatureDerateHelper.getApplicablePRate(chargeDeratingStrategySet, temperature);
+					maxSystemPower = cStackCountPerArray * maxChargeCurrentPerStackAmps * getNominalStackVoltage() / 1000;
+					actualMaxPowerCapacity = (double) SystemInfo.getMaxAllowableChargePower(arrayIndex);
+				}else {
+					pRate= CellTemperatureDerateHelper.getApplicablePRate(dischargeDeratingStrategySet, temperature);
+					maxSystemPower = cStackCountPerArray * maxDischargeCurrentPerStackAmps * getNominalStackVoltage() / 1000;
+					actualMaxPowerCapacity = (double) SystemInfo.getMaxAllowableDischargePower(arrayIndex);
+				}
+			}
+		}
+		int powerCorrespondingToPRate = cStackCountPerArray * convertPRateToKw(pRate);
+		double expectedMaxPowerCapacity = Math.min(powerCorrespondingToPRate, maxSystemPower);
+		isTestPass = CommonHelper.compareIntegers(	(int) (expectedMaxPowerCapacity),
+													(int) (actualMaxPowerCapacity), tolerance, .01);
+		if (isTestPass)
+			LOG.info("PASS: Charging={} Temperature: {} Array#{} - actualMaxPowerCapacity: {},  expectedMaxChargePowerCapacity: {}",
+					isCharging,temperature,arrayIndex, actualMaxPowerCapacity, expectedMaxPowerCapacity);
+		else
+			LOG.info("FAIL: Charging={} Temperature:{} Array#{} - actualMaxPowerCapacity: {},  expectedMaxChargePowerCapacity: {}",
+					isCharging,temperature,arrayIndex, actualMaxPowerCapacity, expectedMaxPowerCapacity);
+
+		return isTestPass;
+	}
+
+	private static boolean temperatureInLowTemperatureAlarmBand(double temperature) {
+		if (temperature < 2) {
+			lowTemperatureAlarmNotCleared=true;
+		}
+		else {
+			if(lowTemperatureAlarmNotCleared) {
+				if (temperature > 6) {
+					lowTemperatureAlarmNotCleared=false;
+				}
+			}
+	
+		}
+		return lowTemperatureAlarmNotCleared;
+	}
+	
+	private static boolean temperatureInHighTemperatureAlarmBand(double temperature) {
+		if (temperature > 53) {
+			highTemperatureAlarmNotCleared=true;
+		}
+		else {
+			if(highTemperatureAlarmNotCleared) {
+				if (temperature < 50) {
+					highTemperatureAlarmNotCleared=false;
+				}
+			}
+	
+		}
+		return highTemperatureAlarmNotCleared;
+	}
+
+}

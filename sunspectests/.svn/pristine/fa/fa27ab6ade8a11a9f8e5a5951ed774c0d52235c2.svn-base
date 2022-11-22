@@ -1,0 +1,153 @@
+package com.powin.modbusfiles.reports;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class DcBatteryData {
+
+	private int ah;
+
+	@JsonProperty(value = "kW")
+	private long kW;
+
+	@JsonProperty(value = "kWh")
+	private DcKwh kWh;
+
+	private int current;
+
+	private int voltage;
+
+	private CellVoltage cellVoltage;
+
+	private CellTemperature cellTemperature;
+
+	private DcSocData socData;
+
+	public void setAh(int ah) {
+		this.ah = ah;
+	}
+
+	public int getAh() {
+		return this.ah;
+	}
+
+	public void setKW(long kW) {
+		this.kW = kW;
+	}
+
+	public long getKW() {
+		return this.kW;
+	}
+
+	public void setKWh(DcKwh kWh) {
+		this.kWh = kWh;
+	}
+
+	public DcKwh getKWh() {
+		return this.kWh;
+	}
+
+	public void setCurrent(int current) {
+		this.current = current;
+	}
+
+	public int getCurrent() {
+		return this.current;
+	}
+
+	public void setVoltage(int voltage) {
+		this.voltage = voltage;
+	}
+
+	public int getVoltage() {
+		return this.voltage;
+	}
+
+	public void setCellVoltage(CellVoltage cellVoltage) {
+		this.cellVoltage = cellVoltage;
+	}
+
+	public CellVoltage getCellVoltage() {
+		return this.cellVoltage;
+	}
+
+	public void setCellTemperature(CellTemperature cellTemperature) {
+		this.cellTemperature = cellTemperature;
+	}
+
+	public CellTemperature getCellTemperature() {
+		return this.cellTemperature;
+	}
+
+	public void setSocData(DcSocData socData) {
+		this.socData = socData;
+	}
+
+	public DcSocData getSocData() {
+		return this.socData;
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ah;
+		result = prime * result + ((cellTemperature == null) ? 0 : cellTemperature.hashCode());
+		result = prime * result + ((cellVoltage == null) ? 0 : cellVoltage.hashCode());
+		result = prime * result + current;
+		result = (int) (prime * result + kW);
+		result = prime * result + ((kWh == null) ? 0 : kWh.hashCode());
+		result = prime * result + ((socData == null) ? 0 : socData.hashCode());
+		result = prime * result + voltage;
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		DcBatteryData other = (DcBatteryData) obj;
+		if (ah != other.ah)
+			return false;
+		if (cellTemperature == null) {
+			if (other.cellTemperature != null)
+				return false;
+		} else if (!cellTemperature.equals(other.cellTemperature))
+			return false;
+		if (cellVoltage == null) {
+			if (other.cellVoltage != null)
+				return false;
+		} else if (!cellVoltage.equals(other.cellVoltage))
+			return false;
+		if (current != other.current)
+			return false;
+		if (kW != other.kW)
+			return false;
+		if (kWh == null) {
+			if (other.kWh != null)
+				return false;
+		} else if (!kWh.equals(other.kWh))
+			return false;
+		if (socData == null) {
+			if (other.socData != null)
+				return false;
+		} else if (!socData.equals(other.socData))
+			return false;
+		if (voltage != other.voltage)
+			return false;
+		return true;
+	}
+
+	@Override
+	public String toString() {
+		return "DcBatteryData [ah=" + ah + ", kW=" + kW + ", kWh=" + kWh + ", current=" + current + ", voltage="
+				+ voltage + ", cellVoltage=" + cellVoltage + ", cellTemperature=" + cellTemperature + ", socData="
+				+ socData + "]";
+	}
+
+}

@@ -1,0 +1,4 @@
+ to_char | connectedstackmaxcellvoltage | amps | kw | dcbusvoltage 
+---------+------------------------------+------+----+--------------
+(0 rows)
+

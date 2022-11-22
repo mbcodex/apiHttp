@@ -1,0 +1,63 @@
+package com.powin.modbusfiles.stackoperations;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
+
+import com.powin.modbusfiles.utilities.CommonHelper;
+
+//TODO This class should configure the system with the correct number of stacks
+class OutOfRotationIntegrationTest {
+	private final static Logger LOG = LogManager.getLogger();
+
+	private static OutOfRotation oor = new OutOfRotation();
+	//private static OutOfRotation oor = new OutOfRotation();
+
+	@BeforeAll
+	static void setupBeforeClass() throws Exception {
+		LOG.info("init");
+	}
+
+	@AfterAll
+	static void tearDownAfterClass() throws Exception {
+	}
+
+	@BeforeEach
+	void setup(TestInfo testInfo) {
+		LOG.info("**** Running {} ****", testInfo.getDisplayName());
+		CommonHelper.sleep(3000);
+	}
+
+	@AfterEach
+	void tearDown(TestInfo testInfo) throws Exception {
+		LOG.info("setting string in rotation", testInfo.getDisplayName());
+	}
+	
+	@Test
+	void testmoveAllOutOfRotation(){
+		RotationControl.moveOutOfRotation(1);
+	}
+	@Test
+	void testmoveAllIntoRotation(){
+		RotationControl.moveIntoRotation(1);
+	}
+	
+	@Test
+	void testmoveIntoRotation(){
+		RotationControl.moveIntoRotation(1, 1);
+		RotationControl.moveIntoRotation(1, 2);
+	}
+	
+	@Test
+	void testmoveOutOfRotation(){
+		RotationControl.moveOutOfRotation(1, 1);
+		RotationControl.moveOutOfRotation(1, 2);
+	}
+	
+
+}

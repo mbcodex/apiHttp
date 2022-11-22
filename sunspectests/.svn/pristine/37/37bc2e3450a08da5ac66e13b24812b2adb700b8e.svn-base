@@ -1,0 +1,104 @@
+package com.powin.modbusfiles.derate;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collection;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import com.jcraft.jsch.JSchException;
+import com.powin.modbus.ModbusException;
+import com.powin.modbusfiles.configuration.StackType;
+import com.powin.modbusfiles.derating.CellVoltageDerate;
+import com.powin.modbusfiles.derating.DerateCommon;
+import com.powin.modbusfiles.derating.WarnActions;
+import com.powin.modbusfiles.derating.DerateCommon.DerateParameters;
+import com.powin.modbusfiles.reports.SystemInfo;
+import com.powin.modbusfiles.testbase.BaseIntegrationTest;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.FileHelper;
+
+public class WarnDerateIntegrationTest extends BaseIntegrationTest {
+	public static WarnActions warnDerate;
+	private static int cArrayCount = 4;
+	private static int cStringCount = 4;
+	static {
+		BaseIntegrationTest.LOG = LogManager.getLogger();
+	}
+	
+	@BeforeAll
+	public static void setupBeforeClass() throws IOException, InterruptedException, JSchException, ModbusException {
+		LOG.info("WarnDerateTest running...");
+		LOG.info("Removing foo and configtest folders");
+		FileHelper.removeRemoteDir("/home/powin/foo*", Constants.TURTLE_HOST, Constants.USER, Constants.PW);
+		FileHelper.removeRemoteDir("/home/powin/configTest*", Constants.TURTLE_HOST, Constants.USER, Constants.PW);
+		FileHelper.removeRemoteDir("/etc/powin/goo*", Constants.TURTLE_HOST, Constants.USER, Constants.PW);
+		LOG.info("setupBeforeClass - creating system with {} arrays and {} strings", cArrayCount, cStringCount);
+		boolean tomcatRestartNeeded = FileHelper.resetDefaults();
+		tomcatRestartNeeded |= CommonHelper.setInverterDefaults();
+		tomcatRestartNeeded |= CommonHelper.setupSystem(SystemInfo.getStationCode(), StackType.STACK_140_GEN2,
+				cArrayCount, cStringCount, CellVoltageDerate.maxChargePowerPerStackKw,
+				cStringCount * CellVoltageDerate.maxChargeCurrentPerStackAmps);
+		BaseIntegrationTest.moveAllStacksInAllArraysIntoRotationAndCloseContactors();
+		DerateCommon.setWarnDerate(DerateParameters.ENABLE,DerateParameters.DERATE_FOLDER_DOES_NOT_EXIST);
+		CommonHelper.restartTurtleTomcat();
+	}
+	@AfterAll
+	public static void setupAfterClass() throws IOException, InterruptedException, JSchException {
+		DerateCommon.resetDerateFolder();
+		CommonHelper.restartTurtleTomcat();
+	}
+
+	public static Collection<?> stackValues() {
+		return Arrays.asList(new Object[][] { 
+				{ "2001,3777,1,1" },
+				{ "2001,3777,1,1|2001,3777,1,2" },
+				{ "2001,3777,1,1|2001,3777,1,2|2001,3777,1,3" },
+				{ "2001,3777,1,1|2001,3777,1,2|2001,3777,1,3|2001,3777,1,4" }, 
+				{ "2004,3777,1,1" },
+				{ "2004,3777,1,1|2001,3777,1,2" }, 
+				{ "2004,3777,1,1|2001,3777,1,2|2001,3777,1,3" },
+				{ "2004,3777,1,1|2001,3777,1,2|2001,3777,1,3|2001,3777,1,4" }, 
+				{ "2010,3777,1,1" },
+				{ "2010,3777,1,1|2001,3777,1,2" }, 
+				{ "2010,3777,1,1|2001,3777,1,2|2001,3777,1,3" },
+				{ "2010,3777,1,1|2001,3777,1,2|2001,3777,1,3|2001,3777,1,4" },
+				{ "2004,3777,1,1|2010,3777,1,2|2004,3777,1,3|2001,3777,1,2|2004,3777,2,2|2010,3777,2,2|2004,3777,2,3|2001,3777,2,2" },
+				{ "2004,3777,2,2|2010,3777,2,2|2004,3777,2,3|2001,3777,2,2" } ,
+				{ "2014,3777,1,1" }, 
+				// SHOULD NOT TRIGGER WARN DERATE OR WARN STOP
+				{ "2019,3777,1,1" }, { "2020,3777,1,1" }, { "2070,3777,1,1" } 		
+		});
+	}
+
+	@Tag("simulator")
+	@Tag("warnderate")
+	@Tag("validateWarnDerateTest")
+	@ParameterizedTest
+	@MethodSource("stackValues")
+	public void validateWarnDerateTest(String commandSet) throws Exception {
+		try {
+			LOG.info("Warn derate test with warn stop disabled running...");
+			warnDerate = new WarnActions("DERATE", cArrayCount, cStringCount);
+			warnDerate.setNotification(commandSet);
+			Thread.sleep(6000);
+			boolean status = true;
+			for (int arrayIndex = 1; arrayIndex <= cArrayCount; arrayIndex++) {
+				status &= warnDerate.validateWarnAction(commandSet, arrayIndex);
+			}
+			warnDerate.clearNotification(commandSet);
+		
+			Assertions.assertTrue(status);
+		} catch (Exception e) {
+			LOG.error("Where did we come from?", e);
+		}
+	}
+}

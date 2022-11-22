@@ -1,0 +1,31 @@
+#!/bin/bash
+COLS=$(tput cols)
+
+cntrPrompt () {
+  local prompt="Software versions installed are: "      
+  centerOn=$prompt  # global
+  [[ $# -ne 0 ]]  && centerOn=$1 && printf "\n%*s" $[$COLS/2-${#centerOn}] ; echo -e "${BOLD}$1"
+  printf "\n%*s" $[$COLS/2-${#centerOn}] ; echo -e "${BOLD}${prompt}"
+}
+
+cntr () {
+  printf "%*s" $[$COLS/2-${#centerOn}] 
+}
+
+turtle=$(curl -sk https://localhost:8443/turtle/status | head -n2 | grep 'Version' | tail -n 1 | cut -c9-)
+cob=$(curl -sk https://localhost:8443/coblynau/status | tail -n2 | grep 'Version' | cut -c10-)
+kobold=$(curl -sk https://localhost:8443/kobold/status | tail -n2 | grep 'Version' | cut -c10-)
+knocker=$(curl -sk https://localhost:8443/knocker/status | grep 'Version' | cut -c9-)
+primrose=$(curl -sk https://localhost:8443/primrose/status | grep 'Version' | cut -c9-)
+
+clear
+cntrPrompt ; echo
+cntr ; echo -ne Turtle : '\t' && echo -e $turtle
+cntr ; echo -ne Coblynau : '\t' && echo -e $cob
+cntr ; echo -ne Kobold : '\t' && echo -e $kobold
+cntr ; echo -ne Knocker : '\t'&& echo -e $knocker
+cntr ; echo -ne Primrose : '\t' && echo -e $primrose
+cntr ; echo -e $(curl -ks http://localhost:8080/turtle/lastcall.txt | grep 'stackDefinitionName' | head -n1)
+echo
+cntr ; echo -e $(/home/powin/zc)
+

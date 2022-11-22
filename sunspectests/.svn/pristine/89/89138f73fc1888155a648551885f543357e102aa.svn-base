@@ -1,0 +1,125 @@
+package com.powin.modbusfiles.apps;
+
+import java.nio.charset.Charset;
+import java.util.regex.Pattern;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.google.protobuf.ByteString;
+import com.powin.dragon.app.backstop.BackstopAppFactory;
+import com.powin.modbusfiles.modbus.ModbusPowinBlock;
+import com.powin.modbusfiles.power.MovePower;
+import com.powin.modbusfiles.reports.ArrayPcsData;
+import com.powin.modbusfiles.reports.Lastcall;
+import com.powin.modbusfiles.utilities.AppInjectionCommon;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.PowinProperty;
+import com.powin.modbusfiles.utilities.StringUtils;
+
+public class BackstopApp {
+	private final static Logger LOG = LogManager.getLogger();
+	static final String SET_TO_STANDBY = "set to standby";
+	static final String NOT_IN_STANDBY_STATUS_MESSAGE = "---";
+	private static final boolean ZERO_POWER = false;
+	private static final boolean NON_ZERO_POWER = true;
+	private static final boolean STATUS_MESSAGE_NOT_EXPECTED = false;
+	static final boolean STATUS_MESSAGE_EXPECTED = true;
+	private static final boolean EXPECTED_APP_ENABLED = true;
+	private static final int APP_PRIORITY = 9999;
+	private static SocCalibratorApp socCalibratorApp = new SocCalibratorApp();
+	protected static final String tempConfigFileContents = 
+			"{\n" 
+			+ "  \"appConfigVersion\" : 0,\n"
+			+ "  \"appConfigName\" : \"instant\",\n" 
+			+ "  \"enabled\" : ${}\n" 
+			+ "}\n";
+
+	public static SocCalibratorApp getSocCalibratorApp() {
+		return socCalibratorApp;
+	}
+
+	private static void sendCommandToBackstopApp(boolean isEnable) {
+		LOG.trace("Entering sendCommandToBackstopApp");
+		String commandText = tempConfigFileContents.replace("${}", String.valueOf(isEnable));
+		String appConfigName = StringUtils.getMatchString(commandText, "default|instant", Pattern.UNIX_LINES,
+				StringUtils.ReturnGroup.NONE, null);
+		AppInjectionCommon.getGoblinCommandDepot().addCommand("admin",
+				AppInjectionCommon.buildCommand(isEnable, ByteString.copyFrom(commandText, Charset.defaultCharset()),
+						appConfigName, APP_PRIORITY, BackstopAppFactory.APPCODE));
+		CommonHelper.sleep(Constants.TEN_SECONDS);
+		LOG.trace("Exiting sendCommandToBackstopApp");
+	}
+
+	public static void enable() {
+		sendCommandToBackstopApp(Constants.ENABLE);
+	}
+
+	public static void disable() {
+		sendCommandToBackstopApp(Constants.DISABLE);
+	}
+
+	static boolean verifyAppEnabled() {
+		boolean appEnabled = AppInjectionCommon.verifyAppEnabledStatus(BackstopAppFactory.APPCODE, EXPECTED_APP_ENABLED);
+		if (!appEnabled) {
+			LOG.error("Failed to get the appropriate enabled state:{} for BackStop app", EXPECTED_APP_ENABLED);
+		}
+		return appEnabled;
+	}
+
+	static boolean verifyBackStopAppStatusMessage(String statusMessage, boolean statusMessageExpected) {
+		boolean appStatusMatches = AppInjectionCommon.verifyAppStatusMessage(BackstopAppFactory.APPCODE, statusMessage);
+		boolean isTestPass=true;
+		if (statusMessageExpected) {
+			if (!appStatusMatches) {
+				LOG.error("Status message:{} for BackStop app did not appear when it should have", statusMessage);
+				isTestPass=false;
+			}
+		} else {
+			if (appStatusMatches) {
+				LOG.error("Status message:{} for BackStop app appeared when it should not have", statusMessage);
+				isTestPass=false;
+			}
+		}
+		return isTestPass;
+	}
+	
+	public static void disablePowerApps() {
+		PowerCommandApp.disablePowerCommandApp();
+		MovePower.disableSunspecPower();
+		ModbusPowinBlock.getModbusPowinBlock().disableBasicOp();
+		getSocCalibratorApp().disable();
+	}
+	
+	static boolean verifyWithPowerOn() {
+		return verifyPower(NON_ZERO_POWER);
+	}
+
+	static boolean verifyWithPowerOff() {
+		return  verifyPower(ZERO_POWER);
+	}
+	
+	private static boolean verifyPower(boolean isPowerNonZero) {
+		boolean isTestPass=true;
+		ArrayPcsData data = Lastcall.getArrayPcsData(PowinProperty.ARRAY_INDEX.intValue(),
+				Integer.parseInt(PowinProperty.PCS_INDEX.toString()));
+		if(isPowerNonZero) {
+			if (data.getAcRealPowerSettingKW() != 0) {
+				isTestPass &= verifyBackStopAppStatusMessage(NOT_IN_STANDBY_STATUS_MESSAGE, STATUS_MESSAGE_EXPECTED);
+			} else {
+				LOG.error("Failed to move power with PowerCommandApp");
+				isTestPass = false;
+			}
+		}
+		else {
+			if (data.getAcRealPowerSettingKW() == 0) {
+				isTestPass &= verifyBackStopAppStatusMessage(SET_TO_STANDBY, STATUS_MESSAGE_NOT_EXPECTED);
+			} else {
+				LOG.error("Failed to disable all power control apps, test abort.");
+				isTestPass = false;
+			}
+		}
+		return isTestPass;
+	}
+}

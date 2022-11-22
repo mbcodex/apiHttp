@@ -1,0 +1,81 @@
+package com.powin.modbusfiles.apps;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
+
+import com.powin.modbusfiles.configuration.StackType;
+import com.powin.modbusfiles.derating.CellVoltageDerate;
+import com.powin.modbusfiles.reports.SystemInfo;
+import com.powin.modbusfiles.testbase.BaseIntegrationTest;
+import com.powin.modbusfiles.utilities.CommonHelper;
+
+public class EStopAppIntegrationTest extends BaseIntegrationTest {
+	private static EStopApp estopApp;
+
+	static {
+		BaseIntegrationTest.LOG = LogManager.getLogger();
+	}
+		@BeforeAll
+	public static void setupBeforeClass() throws Exception {
+		boolean isTomcatRestartRequired = CommonHelper.setupSystem(SystemInfo.getStationCode(),
+				StackType.STACK_140_GEN2, 1, 1, CellVoltageDerate.maxChargePowerPerStackKw,
+				1 * CellVoltageDerate.maxChargeCurrentPerStackAmps);
+		estopApp = new EStopApp();
+		estopApp.enable();
+		estopApp.triggerBasicOpenCloseDetector(false);
+		estopApp.triggerLowVoltageOpenCloseDetector(false);
+		if (isTomcatRestartRequired) {
+			CommonHelper.restartTurtleTomcat();
+		}
+	}
+
+	@AfterAll
+	public static void tearDownAfterClass() {
+		estopApp.triggerBasicOpenCloseDetector(false);
+		estopApp.triggerLowVoltageOpenCloseDetector(false);
+		CommonHelper.restartTurtleTomcat();
+	}
+
+	@Override
+	@AfterEach
+	public void tearDown(TestInfo testInfo) {
+		estopApp.triggerBasicOpenCloseDetector(false);
+		estopApp.triggerLowVoltageOpenCloseDetector(false);
+		super.tearDown(testInfo);
+	}
+
+	@Disabled
+	@Test
+	public void cannotDisableEStopAppTest() {
+		estopApp.disable();
+		assertTrue(estopApp.verifyEStopDisableImpossible());
+	}
+
+	@Tag("simulator")
+	@Tag("estop")
+	@Tag("basicOpenClose")
+	@Test
+	public void basicOpenClose() {
+		estopApp.triggerBasicOpenCloseDetector(true);
+		CommonHelper.restartTurtleTomcat();
+		CommonHelper.quietSleep(20000);
+		assertTrue(estopApp.validateEStopTripped());
+	}
+
+	@Disabled
+	@Test
+	public void lowVoltageOpenClose() {
+		estopApp.triggerLowVoltageOpenCloseDetector(true);
+		CommonHelper.restartTurtleTomcat();
+		assertTrue(estopApp.validateEStopTripped());
+	}
+}

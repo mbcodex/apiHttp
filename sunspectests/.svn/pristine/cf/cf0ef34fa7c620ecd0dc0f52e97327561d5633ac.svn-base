@@ -1,0 +1,79 @@
+package com.powin.modbusfiles.cycling;
+
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.powin.modbusfiles.cycling.AppController.AppControl;
+import com.powin.modbusfiles.reports.CyclingReport;
+import com.powin.modbusfiles.stackoperations.Contactors;
+import com.powin.modbusfiles.stackoperations.RotationControl;
+import com.powin.modbusfiles.utilities.Constants;
+
+/**
+ * NOTE: Test is run on a 230P prototype in Cubby A so target reates are powerlimites: Target Rate Min-P(46kW) & Target Rate Mid-P(58kW).
+ * 1. Rest until all cells are at 23+-2 C
+ * 2. Discharge a Target Rate in BasicOp (power) until contactors Open
+ * 3. Rest 1h, balancing on (cell maximum, 10mV dead band))
+ * 4. Charge at Target Rage in BasicOp (SOC100) followed by a Slow-Charge for 4h with balancing on.
+ * 5. Discharge a Target Rate in DirectP until contactors open
+ * 6. Repeat step 3 to 5 for a t least three full cycles for both Target Rate Min-P(46 kW) & Target Rate mid-P(58 kW), a total of 6 cycles.
+ * 7. Charge a MIN-P(.2 P-rate) in BasicOp(SOC030)
+ * @author RAF
+ *
+ */
+public class Stack360_FullCapacityCycler extends SimpleDirectPCycler {
+	private final static Logger LOG = LogManager.getLogger();	
+	private static final int Prate = 90;
+	private static final int SOC_100 = 100;
+	private static final int SOC_30 = 30;
+
+	static String configNameLine;
+	private static Stack360_FullCapacityCycler directPCycler;
+
+	public Stack360_FullCapacityCycler() {
+		setReporter(CyclingReport.Instance);
+	}
+
+	
+	public void run(int kw) {
+		    LOG.info("Starting Discharge");
+            directPCycler.movePower( kw );
+			LOG.info("Done Moving Power");
+			Contactors.openContactors(1, 1);
+		    rest(Constants.TEN_MINUTES_MIN);
+			
+		    LOG.info("Starting Charge");
+		    directPCycler.movePower( -kw );
+			Contactors.openContactors(1, 1);
+            restToRoomTemp(8*Constants.ONE_HOUR);			
+	}
+
+
+	
+	public static Stack360_FullCapacityCycler getDirectPCycler() {
+		if (null == directPCycler) {
+			directPCycler = new Stack360_FullCapacityCycler();
+		}
+		return directPCycler;
+	}
+	
+	public static void main(String[] args) {
+		getDirectPCycler().getReporter().createNewReportFile("Stack360FullCycle_Report.csv");
+ 		AppController.controlApps(AppControl.START_SUNSPEC);
+ 		RotationControl.movePCSIntoRotation(1, 1);
+		directPCycler.movePower( -Prate );
+        restToRoomTemp(8*Constants.ONE_HOUR);			
+        for (int i = 0; i < 3; ++i) {
+          LOG.info("Running iteration {}", i);
+          directPCycler.run(Prate);
+        }
+		AppController.controlApps(AppControl.STOP_SUNSPEC);
+		LOG.info("End Cycle Test");
+
+	}
+
+
+
+	
+}

@@ -1,0 +1,80 @@
+package com.powin.modbusfiles.reports;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class BessStatusCodeEntry {
+
+	private String bessStatusCode;
+
+	private String extendedInfo;
+
+	private String startTimestamp;
+
+	public void setBessStatusCode(String bessStatusCode) {
+		this.bessStatusCode = bessStatusCode;
+	}
+
+	public String getBessStatusCode() {
+		return this.bessStatusCode;
+	}
+
+	public void setExtendedInfo(String extendedInfo) {
+		this.extendedInfo = extendedInfo;
+	}
+
+	public String getExtendedInfo() {
+		return this.extendedInfo;
+	}
+
+	public void setStartTimestamp(String startTimestamp) {
+		this.startTimestamp = startTimestamp;
+	}
+
+	public String getStartTimestamp() {
+		return this.startTimestamp;
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((bessStatusCode == null) ? 0 : bessStatusCode.hashCode());
+		result = prime * result + ((extendedInfo == null) ? 0 : extendedInfo.hashCode());
+		result = prime * result + ((startTimestamp == null) ? 0 : startTimestamp.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		BessStatusCodeEntry other = (BessStatusCodeEntry) obj;
+		if (bessStatusCode == null) {
+			if (other.bessStatusCode != null)
+				return false;
+		} else if (!bessStatusCode.equals(other.bessStatusCode))
+			return false;
+		if (extendedInfo == null) {
+			if (other.extendedInfo != null)
+				return false;
+		} else if (!extendedInfo.equals(other.extendedInfo))
+			return false;
+		if (startTimestamp == null) {
+			if (other.startTimestamp != null)
+				return false;
+		} else if (!startTimestamp.equals(other.startTimestamp))
+			return false;
+		return true;
+	}
+
+	@Override
+	public String toString() {
+		return "BessStatusCodeEntry [bessStatusCode=" + bessStatusCode + ", extendedInfo=" + extendedInfo
+				+ ", startTimestamp=" + startTimestamp + "]";
+	}
+}

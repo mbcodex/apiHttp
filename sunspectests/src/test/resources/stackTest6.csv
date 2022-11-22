@@ -1,0 +1,5 @@
+Action,Qualifier,Duration,D-Value,Power,P-Value,Step,Comment
+Title,reports/FullCharge,,kW,50,,,
+Using,DirectP,,,,,,
+Charge,Full,,kW,50,,,
+

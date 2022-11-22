@@ -1,0 +1,7 @@
+{
+  "arrayIndex" : 1,
+  "pcsIndexes" : [ 1 ],
+  "enabled" : true,
+  "stopPriority" : 50,
+  "startPriority" : 50
+}

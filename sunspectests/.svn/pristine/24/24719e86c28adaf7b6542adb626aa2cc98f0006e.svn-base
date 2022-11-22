@@ -1,0 +1,26 @@
+#-----------------------------------------------------
+#  Get the IP of each Machine that has been assigned by Virtualbox
+#  This file is used to pass machine name to the runRegression script.
+#  Note: These IP addresses are subject to change and should be maintained
+#       automatically.  Install this file in the common folder of the host.
+#-----------------------------------------------------
+REGRESSION_A=powin@10.0.0.13
+REGRESSION_B=powin@10.0.0.104
+REGRESSION_C=powin@10.0.0.212
+REGRESSION_D=powin@10.0.0.216
+REGRESSION_E=powin@10.0.0.132
+REGRESSION_F=powin@10.0.0.235
+REGRESSION_G=powin@10.0.0.253
+REGRESSION_H=powin@10.0.0.252
+QAHOST=powin@10.0.0.10
+MAHESH=powin@10.0.0.244
+RAYMOND=powin@10.0.0.100
+
+trim () {
+  echo "$(echo -e "${1}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+}
+
+#-----------------------------------------------------
+#  Map the IP to the machine name
+#-----------------------------------------------------
+declare -A IPS=([$REGRESSION_A]=RegressionA [$REGRESSION_B]=RegressionB [$REGRESSION_C]=RegressionC [$REGRESSION_D]=RegressionD [$REGRESSION_E]=RegressionE [$REGRESSION_F]=RegressionF [$REGRESSION_G]=RegressionG [$REGRESSION_H]=RegressionH [$QAHOST]=powinQaServer1 [$MAHESH]=Mahesh [$RAYMOND]=Raymond)

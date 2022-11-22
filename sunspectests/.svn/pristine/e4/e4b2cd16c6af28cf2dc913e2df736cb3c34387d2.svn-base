@@ -1,0 +1,62 @@
+package com.powin.modbusfiles.apps;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.apache.logging.log4j.LogManager;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+
+import com.powin.dragon.app.export.mgt.ExportManagementAppFactory;
+import com.powin.modbusfiles.reports.SystemInfo;
+import com.powin.modbusfiles.testbase.BaseIntegrationTest;
+import com.powin.modbusfiles.utilities.AppInjectionCommon;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.Constants;
+
+public class ExportMgmtAppTest extends BaseIntegrationTest {
+	public static ExportMgmtApp epApp;
+	static {
+		BaseIntegrationTest.LOG = LogManager.getLogger();
+	}
+	
+	@BeforeAll
+	public static void setupBeforeClass() {
+		LOG.info("init");
+		epApp = new ExportMgmtApp();
+	}
+
+	@AfterAll
+	public static void tearDownAfterClass() throws Exception {
+		ExportMgmtApp.disableExportManagementApp();
+	}
+
+	@Test
+	public void disablePowerCommandAppTest() throws Exception {
+		ExportMgmtApp.disableExportManagementApp();
+		boolean isAppStatusEqual = AppInjectionCommon.verifyAppEnabledStatus(ExportManagementAppFactory.APPCODE, Constants.DISABLED);
+		assertTrue(isAppStatusEqual);
+	}
+
+	@Test
+	public void enableExportMgmtAppTest() throws Exception {
+		ExportMgmtApp.sendCommandToExportManagementApp(true);
+		boolean isAppStatusEqual = AppInjectionCommon.verifyAppEnabledStatus(ExportManagementAppFactory.APPCODE, Constants.ENABLED);
+		assertTrue(isAppStatusEqual);
+
+	}
+
+	@Test
+	public static void verifyPowerMoving() throws Exception {
+		ExportMgmtApp.sendCommandToExportManagementApp(true);
+		CommonHelper.quietSleep(Constants.TEN_SECONDS);
+		int stringPower = SystemInfo.getStringPower();
+		int current = SystemInfo.getStringCurrent();
+		int pcsCurrent = SystemInfo.getPcsAcCurrent();
+
+		assertEquals(stringPower, 10);
+		assertEquals(current, 20);
+		assertEquals(pcsCurrent, 50);
+	}
+}

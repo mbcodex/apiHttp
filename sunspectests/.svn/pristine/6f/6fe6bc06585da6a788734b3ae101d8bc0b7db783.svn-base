@@ -1,0 +1,8 @@
+#!/bin/bash
+# pull the app version numbers from the status text.
+turtle=$(curl -sk https://localhost:8443/turtle/status | head -n2 | grep 'Version' | tail -n 1 | cut -c9-)
+cob=$(curl -sk https://localhost:8443/coblynau/status | tail -n2 | grep 'Version' | cut -c10-)
+kobold=$(curl -sk https://localhost:8443/kobold/status | tail -n2 | grep 'Version' | cut -c10-)
+knocker=$(curl -sk https://localhost:8443/knocker/status | grep 'Version' | cut -c9-)
+primrose=$(curl -sk https://localhost:8443/primrose/status | grep 'Version' | cut -c9-)
+

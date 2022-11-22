@@ -1,0 +1,548 @@
+package com.powin.modbusfiles.apps;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.List;
+import java.util.stream.Stream;
+
+import org.apache.logging.log4j.LogManager;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import com.powin.modbusfiles.apps.scheduler.SchedulerApp;
+import com.powin.modbusfiles.power.MovePower;
+import com.powin.modbusfiles.reports.SystemInfo;
+import com.powin.modbusfiles.testbase.BaseIntegrationTest;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.Result;
+
+public class AppInteractionsIntegrationTest extends BaseIntegrationTest {
+	private static final boolean SUNSPEC_FIRST = true;
+	public static AppInteractions appInteractions;
+
+	static {
+		BaseIntegrationTest.LOG = LogManager.getLogger();
+	}
+	
+	@BeforeAll
+	public static void setupBeforeClass() throws Exception {
+		initSystemForRegression();
+		appInteractions = new AppInteractions();
+	}
+
+	@AfterAll
+	public static void tearDownafterClass() throws Exception {
+		LOG.info("All tests done. Disabling Basic Ops and Sunspec Power Command apps after test...");
+		BasicOpsApp.disable();
+		SunspecPowerApp.disable();
+		PowerCommandApp.disablePowerCommandApp();
+		AppInteractions.schedulerApp.disable();
+		CommonHelper.quietSleep(3000);
+	}
+
+	@Override
+	@BeforeEach
+	public void setup(TestInfo testInfo) {
+		super.setup(testInfo);
+		boolean tomcatRestartNeeded = false;
+		if (SystemInfo.getSoc() > 70 || SystemInfo.getSoc() < 30) {
+			CommonHelper.setSoC(50);
+			tomcatRestartNeeded = true;
+			CommonHelper.waitForSystemReady();
+		}
+		if (tomcatRestartNeeded) {
+			CommonHelper.restartTurtleTomcat();
+		}
+		CommonHelper.sleep(3000);
+	}
+
+	@Override
+	@AfterEach
+	public void tearDown(TestInfo testInfo) {
+		try {
+			BasicOpsApp.disable();
+		} catch (Exception e) {
+			LOG.error("Exception caught!", e);
+		}
+		MovePower.stopPowerPAsPercent(true);
+		SunspecPowerApp.disable();
+		PowerCommandApp.disablePowerCommandApp();
+		AppInteractions.schedulerApp.disable();
+		super.tearDown(testInfo);
+		CommonHelper.quietSleep(20000);
+	}
+
+	private static Stream<Arguments> schedulerAppParameters1() {
+
+		return Stream.of(
+				// Priority TargetP TargetSoc powerAppRealPower
+				Arguments.of("Power", 45, 0, 30), 
+				Arguments.of("Power", 45, 0, -30),
+				Arguments.of("Power", -45, 100, 30), 
+				Arguments.of("Power", -45, 100, -30)
+		// Till we get clarification on how Priority SOC with Target P=0 behaves?
+//						Arguments.of("SOC", 	0, 		100, 		-30),
+//						Arguments.of("SOC", 	0, 		100, 		0)
+		);
+	}
+	
+	private static Stream<Arguments> schedulerAppParameters2() {
+
+		return Stream.of(
+				Arguments.of("Power", 0, 0, 30), 
+				Arguments.of("Power", 0, 0, -30), 
+				Arguments.of("Power", 0, 0, 0),
+				Arguments.of("SOC", 45, 0, 30) 
+		);
+	}
+
+	private static Stream<Arguments> schedulerAppParameters3() {
+
+		return Stream.of(
+				Arguments.of("SOC", 45, 0, -30),
+				Arguments.of("SOC", -45, 100, 30),
+				Arguments.of("SOC", -45, 100, -30), 
+				Arguments.of("SOC", 0, 0, 30)
+		);
+	}
+
+	@SuppressWarnings("unused")
+	@Disabled
+	// TO DO: Check if these tests are valid or if they are covered in the scheduler
+	// section
+	// These tests pertain maybe to having multiple scheduler apps
+	@Tag("appinteraction")
+	@Tag("scheduleScheduler1")
+	@Tag("simulator")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters1")
+	public void scheduleScheduler1(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		// boolean isTestPass = appInteractions.sunspecBasicOpsInteraction(false,
+		// basicOpsPriority, basicOpsTargetP, basicOpsTargetSoc, sunspecRealPower);
+		boolean isTestPass = appInteractions.schedulerSchedulerInteraction(basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc);
+		assertTrue(isTestPass);
+	}
+	@Tag("appinteraction")
+	@Tag("scheduleScheduler2")
+	@Tag("simulator")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters2")
+	public void scheduleScheduler2(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		// boolean isTestPass = appInteractions.sunspecBasicOpsInteraction(false,
+		// basicOpsPriority, basicOpsTargetP, basicOpsTargetSoc, sunspecRealPower);
+		boolean isTestPass = appInteractions.schedulerSchedulerInteraction(basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc);
+		assertTrue(isTestPass);
+	}
+	
+	@Tag("appinteraction")
+	@Tag("scheduleScheduler3")
+	@Tag("simulator")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters3")
+	public void scheduleScheduler3(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		// boolean isTestPass = appInteractions.sunspecBasicOpsInteraction(false,
+		// basicOpsPriority, basicOpsTargetP, basicOpsTargetSoc, sunspecRealPower);
+		boolean isTestPass = appInteractions.schedulerSchedulerInteraction(basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc);
+		assertTrue(isTestPass);
+	}
+
+	// @Disabled
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("sunspecFirstBasicOpsSecond1")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters1")
+	public void sunspecFirstBasicOpsSecond1(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.sunspecBasicOpsInteraction(true, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("sunspecFirstBasicOpsSecond2")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters2")
+	public void sunspecFirstBasicOpsSecond2(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.sunspecBasicOpsInteraction(true, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("sunspecFirstBasicOpsSecond3")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters3")
+	public void sunspecFirstBasicOpsSecond3(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.sunspecBasicOpsInteraction(true, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+
+	// @Disabled
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("basicOpsFirstPowerCommandSecond1")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters1")
+	public void basicOpsFirstPowerCommandSecond1(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		boolean isTestPass = appInteractions.powerCommandBasicOpsInteraction(false, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower, true);
+		assertTrue(isTestPass);
+	}
+	
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("basicOpsFirstPowerCommandSecond2")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters2")
+	public void basicOpsFirstPowerCommandSecond2(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		boolean isTestPass = appInteractions.powerCommandBasicOpsInteraction(false, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower, true);
+		assertTrue(isTestPass);
+	}
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("basicOpsFirstPowerCommandSecond3")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters3")
+	public void basicOpsFirstPowerCommandSecond3(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		boolean isTestPass = appInteractions.powerCommandBasicOpsInteraction(false, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower, true);
+		assertTrue(isTestPass);
+	}
+
+	// @Disabled
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("basicOpsFirstPowerCommandSecondLowerPriority1")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters1")
+	public void basicOpsFirstPowerCommandSecondLowerPriority1(String basicOpsPriority, int basicOpsTargetP,
+			int basicOpsTargetSoc, int sunspecRealPower) throws Exception {
+		boolean isTestPass = appInteractions.powerCommandBasicOpsInteraction(false, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower, false);
+		assertTrue(isTestPass);
+	}
+	// @Disabled
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("basicOpsFirstPowerCommandSecondLowerPriority2")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters2")
+	public void basicOpsFirstPowerCommandSecondLowerPriority2(String basicOpsPriority, int basicOpsTargetP,
+			int basicOpsTargetSoc, int sunspecRealPower) throws Exception {
+		boolean isTestPass = appInteractions.powerCommandBasicOpsInteraction(false, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower, false);
+		assertTrue(isTestPass);
+	}
+	// @Disabled
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("basicOpsFirstPowerCommandSecondLowerPriority3")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters3")
+	public void basicOpsFirstPowerCommandSecondLowerPriority3(String basicOpsPriority, int basicOpsTargetP,
+			int basicOpsTargetSoc, int sunspecRealPower) throws Exception {
+		boolean isTestPass = appInteractions.powerCommandBasicOpsInteraction(false, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower, false);
+		assertTrue(isTestPass);
+	}
+
+	// @Disabled
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("powerCommandFirstBasicOpsSecondLowerPriority1")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters1")
+	public void powerCommandFirstBasicOpsSecondLowerPriority1(String basicOpsPriority, int basicOpsTargetP,
+			int basicOpsTargetSoc, int sunspecRealPower) throws Exception {
+		boolean isTestPass = appInteractions.powerCommandBasicOpsInteraction(true, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower, false);
+		assertTrue(isTestPass);
+	}
+	
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("powerCommandFirstBasicOpsSecondLowerPriority2")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters2")
+	public void powerCommandFirstBasicOpsSecondLowerPriority2(String basicOpsPriority, int basicOpsTargetP,
+			int basicOpsTargetSoc, int sunspecRealPower) throws Exception {
+		boolean isTestPass = appInteractions.powerCommandBasicOpsInteraction(true, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower, false);
+		assertTrue(isTestPass);
+	}
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("powerCommandFirstBasicOpsSecondLowerPriority3")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters3")
+	public void powerCommandFirstBasicOpsSecondLowerPriority3(String basicOpsPriority, int basicOpsTargetP,
+			int basicOpsTargetSoc, int sunspecRealPower) throws Exception {
+		boolean isTestPass = appInteractions.powerCommandBasicOpsInteraction(true, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower, false);
+		assertTrue(isTestPass);
+	}
+
+	// @Disabled
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("powerCommandFirstBasicOpsSecond1")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters1")
+	public void powerCommandFirstBasicOpsSecond1(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.powerCommandBasicOpsInteraction(true, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower, true));
+	}
+	
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("powerCommandFirstBasicOpsSecond2")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters2")
+	public void powerCommandFirstBasicOpsSecond2(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.powerCommandBasicOpsInteraction(true, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower, true));
+	}
+
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("powerCommandFirstBasicOpsSecond3")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters3")
+	public void powerCommandFirstBasicOpsSecond3(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.powerCommandBasicOpsInteraction(true, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower, true));
+	}
+
+	
+	// @Disabled
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("powerCommandFirstSchedulerSecond1")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters1")
+	public void powerCommandFirstSchedulerSecond1(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.schedulerPowerCommmandInteraction(true, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+	
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("powerCommandFirstSchedulerSecond2")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters2")
+	public void powerCommandFirstSchedulerSecond2(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.schedulerPowerCommmandInteraction(true, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("powerCommandFirstSchedulerSecond3")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters3")
+	public void powerCommandFirstSchedulerSecond3(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.schedulerPowerCommmandInteraction(true, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+
+	// @Disabled
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("schedulerFirstPowerCommandSecond1")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters1")
+	public void schedulerFirstPowerCommandSecond1(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.schedulerPowerCommmandInteraction(false, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("schedulerFirstPowerCommandSecond2")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters2")
+	public void schedulerFirstPowerCommandSecond2(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.schedulerPowerCommmandInteraction(false, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("schedulerFirstPowerCommandSecond3")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters3")
+	public void schedulerFirstPowerCommandSecond3(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.schedulerPowerCommmandInteraction(false, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+
+	// @Disabled
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("sunspecFirstSchedulerSecond1")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters1")
+	public void sunspecFirstSchedulerSecond1(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.schedulerSunspecInteraction(SUNSPEC_FIRST, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+	
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("sunspecFirstSchedulerSecond2")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters2")
+	public void sunspecFirstSchedulerSecond2(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.schedulerSunspecInteraction(SUNSPEC_FIRST, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("sunspecFirstSchedulerSecond3")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters3")
+	public void sunspecFirstSchedulerSecond3(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.schedulerSunspecInteraction(SUNSPEC_FIRST, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+
+	// @Disabled
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("schedulerFirstSunspecSecond1")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters1")
+	public void schedulerFirstSunspecSecond1(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.schedulerSunspecInteraction(false, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("schedulerFirstSunspecSecond2")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters2")
+	public void schedulerFirstSunspecSecond2(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.schedulerSunspecInteraction(false, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("schedulerFirstSunspecSecond3")
+	@ParameterizedTest
+	@MethodSource("schedulerAppParameters3")
+	public void schedulerFirstSunspecSecond3(String basicOpsPriority, int basicOpsTargetP, int basicOpsTargetSoc,
+			int sunspecRealPower) throws Exception {
+		assertTrue(appInteractions.schedulerSunspecInteraction(false, basicOpsPriority, basicOpsTargetP,
+				basicOpsTargetSoc, sunspecRealPower));
+	}
+    // @formatter:off
+	public static Stream<Arguments> basicOpsFirstParameters() {
+		return Stream.of(Arguments.of(
+				"BasicOp, Power, -45, 99, ALWAYS_TRUE, , , , , , |" +
+				"BasicOp, Power, -45, 99, ALWAYS_TRUE, , , , , , |"));
+	}
+	// @formatter:on
+
+//@Disabled
+	@Tag("simulator")
+	@Tag("appinteraction")
+	@Tag("basicOpsFirstSunspecSecond")
+	@ParameterizedTest
+	@MethodSource("basicOpsFirstParameters")
+	public void basicOpsFirstSunspecSecond(String ruleSet) throws Exception {
+		CommonHelper.quietSleep(1000L);
+		SchedulerApp.setScheduleRules(ruleSet);
+		List<String> resultData= SchedulerApp.triggerScheduleRulesPower();
+		Result validateScheduleRulesResults = SchedulerApp.validateScheduleRules(resultData);
+		assertTrue(validateScheduleRulesResults.isAllTestsPass(), validateScheduleRulesResults.getComments());
+	}
+
+	@Disabled
+	@Tag("simulator2")
+	@Tag("appinteraction")
+	@Tag("rechargerStopsMovingPowerWhenBasicOpMovesPower")
+	@Test
+	/**
+	 * C3192
+	 *
+	 * @throws Exception
+	 */
+	public void rechargerStopsMovingPowerWhenBasicOpMovesPower() throws Exception {
+		assertTrue(RechargerApp.startRechargerAndVerifyPowerMoving(10, 25), "Power is not flowing!");
+		// Move power with basic ops, verify recharger stops charging
+		AppInteractions.basicOps.enable();
+		AppInteractions.basicOps.initiateBasicOpParameters(Constants.PRIORITY_SOC_BOOLEAN, -30, 100);
+		CommonHelper.sleep(10);
+		assertTrue(RechargerApp.isStatusSystemBusy(), "Expected System to be busy");
+		// AppInteractions.basicOps.disable();
+		// while (Constants.ENABLED ==
+		// SystemInfo.getAppEnabledStatus(BasicOpAppFactory.APPCODE));
+		// while (
+		// appStatus.equals(SystemInfo.getAppStatus(RechargerAppFactory.APPCODE)));
+		// LOG.info("basicOps is disabled.");
+		// // disable basicop verify recharger starts up again
+		// assertFalse(RechargerApp.isStatusSystemBusy(), "Expected to either be done or
+		// not busy");
+	}
+
+	@Disabled
+	@Tag("simulator2")
+	@Tag("appinteraction")
+	@Tag("rechargerStopsMovingPowerWhenSunSpecMovesPower")
+	@Test
+	public void rechargerStopsMovingPowerWhenSunSpecMovesPower() throws Exception {
+		assertTrue(RechargerApp.startRechargerAndVerifyPowerMoving(10, 25), "Power is not flowing!");
+		// do the same for sunspec power
+		LOG.info("Setting sunspec power");
+		AppInteractions.sunspecPower.setPower(25);
+		CommonHelper.sleep(30);
+		assertTrue(RechargerApp.isStatusSystemBusy(), "Expected System to be busy");
+		// AppInteractions.sunspecPower.disable();
+		// while (Constants.ENABLED ==
+		// SystemInfo.getAppEnabledStatus(SunspecPowerCommandAppFactory.APPCODE));
+		// while (
+		// appStatus.equals(SystemInfo.getAppStatus(RechargerAppFactory.APPCODE)));
+		// CommonHelper.sleep(10);
+		// LOG.info("Sunspec power is disabled.");
+		// assertFalse(RechargerApp.isStatusSystemBusy(), "Expected to either be done or
+		// not busy");
+	}
+
+	// }
+}

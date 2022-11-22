@@ -1,0 +1,8 @@
+-------------------------------------------------------------------------------
+Test set: aimApiChallenge.apiTests
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.183 s <<< FAILURE! - in aimApiChallenge.apiTests
+test_FalureLogDemogetAllVerifyResponseCode  Time elapsed: 0.217 s  <<< FAILURE!
+org.opentest4j.AssertionFailedError: Faking failure to demonstrate failure logging. The api service 'get all skus' did not return a status code of 201 ==> expected: <201> but was: <200>
+	at aimApiChallenge.apiTests.test_FalureLogDemogetAllVerifyResponseCode(apiTests.java:42)
+

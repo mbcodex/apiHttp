@@ -1,0 +1,415 @@
+package com.powin.modbusfiles.utilities;
+
+import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.json.simple.JSONObject;
+import org.junit.After;
+import org.junit.AfterClass;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Test;
+
+import com.jcraft.jsch.JSchException;
+import com.powin.modbusfiles.configuration.StackType;
+import com.powin.modbusfiles.derating.CellVoltageDerate;
+import com.powin.modbusfiles.reports.SystemInfo;
+import com.powin.modbusfiles.stackoperations.Contactors;
+
+public class CommonHelperIntegrationTest {
+	public static String REMOTE_IP = Constants.TURTLE_HOST; // "10.0.0.27";
+//    /**
+//     * Test that the shell script works on a dev environment
+//     * @throws IOException
+//     * @throws InterruptedException
+//     */
+//	//@Test
+//	public void testGetDevice20() throws IOException, InterruptedException {
+//		CommonHelper.getDevice20();
+//		assertTrue((new File("/home/powin/device-20")).exists());
+//	}
+//	//@Test
+//	public void testGetConfigurationJSON() throws IOException, InterruptedException {
+//		CommonHelper.getConfigurationJSON();
+//		assertTrue((new File("/home/powin/configuration.json")).exists());
+//	}
+//
+//	// @Test
+//	public void testGetTurtleLog() throws IOException, InterruptedException {
+//		CommonHelper.getTurtleLog("turtleLog");
+//	}
+//
+	private final static Logger LOG = LogManager.getLogger();
+
+	@Test
+	public void testCreateConfigurationJson() throws IOException {
+		CommonHelper.createConfigurationJson("", StackType.STACK_140_GEN2, 3, 2);
+		// Verify
+		assert (false);
+	}
+    
+	/**
+	 * Do nothing if environment variable is not set.
+	 * To enable set /DLocalDebug=true 
+	 */
+	@Test
+	public void testPressEnterToContinue() {
+		CommonHelper.pressEnterToContinue();
+	}
+	
+	@Test
+	public void testSetTurtleFilePermissons() {
+		CommonHelper.setTurtleFilePermissons(Constants.POWIN_APP_DIR, "777");
+		CommonHelper.setTurtleFilePermissons(Constants.SCHED_CONFIG_FILE, "777");
+		// Verify
+		assert (false);
+	}
+
+	@Test
+	public void testContactorsClosed() {
+		LOG.info("check for closed contactors.");
+		assertTrue(CommonHelper.checkForContactorStatusViaReport(Constants.CONTACTORS_CLOSED,
+				Constants.ONE_MINUTE_SECONDS, ""));
+	}
+
+	@Test
+	public void testContactorsOpen() {
+		LOG.info("check for open contactors.");
+		assertTrue(CommonHelper.checkForContactorStatusViaReport(Constants.CONTACTORS_OPEN,
+				Constants.ONE_MINUTE_SECONDS, ""));
+	}
+
+	/**
+	 * Test the contactors open/close functions. Note: the contactors are left in a
+	 * closed state.
+	 */
+	@Test
+	public void testContactors() {
+		boolean isContactorsOpen = CommonHelper.checkForContactorStatusViaReport(Constants.CONTACTORS_OPEN,
+				Constants.ONE_MINUTE_SECONDS, "");
+		if (isContactorsOpen) {
+			Contactors.closeContactors(1, 1);
+			testContactorsClosed();
+			Contactors.openContactors(1, 1);
+			CommonHelper.sleep(Constants.TEN_SECONDS);
+			testContactorsOpen();
+			Contactors.closeContactors(1, 1);
+		} else {
+			Contactors.openContactors(1, 1);
+			testContactorsOpen();
+			Contactors.closeContactors(1, 1);
+			CommonHelper.sleep(Constants.TEN_SECONDS);
+			testContactorsClosed();
+		}
+	}
+
+	@Test
+	public void testSleep() {
+		CommonHelper.sleep(12000, "This is another test");
+	}
+	
+	@Test
+	public void testReadConfigurationData() throws Exception {
+		String pathToFiles = "/com/powin/qilin/configuration/";
+		try (InputStream input = this.getClass()
+				.getResourceAsStream(pathToFiles + SystemInfo.getStackType().getConfigurationName() + ".json")) {
+			String contents = IOUtils.toString(input, StandardCharsets.UTF_8);
+			System.out.println(contents);
+		}
+	}
+
+	@Test
+	public void testReadConfigurationData230() throws Exception {
+		String pathToFiles = "/com/powin/qilin/configuration/";
+		try (InputStream input = this.getClass()
+				.getResourceAsStream(pathToFiles + StackType.STACK_230_GEN22 + ".json")) {
+			String contents = IOUtils.toString(input, StandardCharsets.UTF_8);
+			System.out.println(contents);
+		}
+	}
+
+	@Test
+	public void testIsSimulator() {
+		assertTrue(CommonHelper.isSimulator("localhost"));
+		assertTrue(CommonHelper.isSimulator(REMOTE_IP));
+
+		CommonHelper.logCaller();
+
+	}
+
+	@Test
+	public void testRestartLocalTomcat() {
+		CommonHelper.restartLocalTomcat();
+	}
+
+	@Test
+	public void testReadFileNamesRemoteFolder() {
+		String filename = ScriptHelper.executeRemoteSSHCommand(REMOTE_IP, PowinProperty.TURTLEUSER.toString(),
+				PowinProperty.TURTLEPASSWORD.toString(), "ls /etc/powin/app/*SSPC001*").get(0);
+		assertTrue(filename.contains("SSPC001.json"));
+	}
+
+	@Test
+	public void testRunScriptRemotely() {
+		String repl1 = "Test Value 1";
+		String repl2 = "Test Value 2";
+		String filepath = "/etc/powin/configuration.json";
+		FileHelper.replaceRemoteJsonStringField(repl1, "configurationName", filepath, REMOTE_IP);
+		FileHelper.replaceRemoteJsonStringField(repl2, "turtleConfigurationCommandsName", filepath, REMOTE_IP);
+
+		List<String> fields = Arrays.asList("turtleConfiguationCommandsName", "confiurationName");
+		List<String> values = Arrays.asList(repl1, repl2);
+
+		assertTrue(FileHelper.verifyJsonStringValues(fields, values, "/etc/powin/configuration.json",
+				Constants.TURTLE_HOST));
+		// List<String> verifyResults = CommonHelper.executeSimpleRemote(REMOTE_IP,
+		// Constants.USER, Constants.PW, "egrep
+		// \"turtleConfigurationCommandsName|configurationName\"
+		// /etc/powin/configuration.json");
+	}
+
+	@Test
+	public void testSetSoC() {
+		CommonHelper.setSoC(0);
+	}
+	
+	@Test
+	public void testSetSoCStackSimulator() {
+		CommonHelper.setSocStackSimulator(35);;
+	}
+
+	@Test
+	public void createBrotherHoodConfig() throws Exception {
+		CommonHelper.setupSystem("BROTHERHOOD-TEST", StackType.STACK_225_GEN22, 99, 17, 2000, 2000);
+		CommonHelper.restartTurtleTomcat();
+	}
+
+	@Test
+	public void waitForSystemReady() {
+		assertTrue(CommonHelper.waitForSystemReady());
+	}
+	
+	/**
+	 * The station code will not be changed if you pass in an empty string.
+	 * @throws IOException
+	 * @throws InterruptedException
+	 * @throws JSchException
+	 */
+	@Test
+	public void setupSystem() throws IOException, InterruptedException, JSchException {
+		int numArrays = 4;
+		int numStringsPerArray = 4;
+		boolean restartNeeded = CommonHelper.setupSystem("", StackType.STACK_140_GEN2, numArrays,
+				numStringsPerArray, CellVoltageDerate.maxChargePowerPerStackKw,
+				numStringsPerArray * CellVoltageDerate.maxChargeCurrentPerStackAmps);
+		if (restartNeeded) {
+			CommonHelper.restartTurtleTomcat();
+		}
+	}
+	
+    /**
+     * TODO: This needs to pass the intended config, so we'll need a way to pull that.
+     */
+	@Test
+	public void checkCurrentConfiguration() {
+		boolean isRestartRequired = CommonHelper.checkCurrentConfiguration(
+				"TEST9",
+				StackType.STACK_225_GEN22, 
+				4, 
+				4, 
+				800, 
+				0);
+		assertFalse(isRestartRequired);
+	}
+	
+	@Test
+	public void testGetArchivaInfo() {
+		String archivaInfo = CommonHelper.getArchivaInfo("turtle", "2", "39");
+		assertNotNull(archivaInfo);
+		LOG.info(archivaInfo);
+	}
+
+	@Test
+	public void testMaxVersion() {
+		String maxVersion = CommonHelper.getMaxVersion("turtle", "2", "39", PowinProperty.ARCHIVA_USER.toString(),
+				PowinProperty.ARCHIVA_PASSWORD.toString());
+		assertNotNull(maxVersion);
+		LOG.info(maxVersion);
+	}
+	
+	@Test
+	public void testValidateVersion() {
+		String app = "turtle";
+		String majorVersion = "2";
+		String minorVersion = "39";
+		String username = PowinProperty.ARCHIVA_USER.toString();
+		String password = PowinProperty.ARCHIVA_PASSWORD.toString();
+		String maxVersion = CommonHelper.getMaxVersion(app, majorVersion, minorVersion, username,
+				password);
+		maxVersion =  CommonHelper.validateVersion(app, majorVersion, minorVersion, maxVersion, username, password);
+		assertNotEquals("",maxVersion);
+	}
+
+	@Test
+	public void testGetAppVersionList() {
+		// List<String> result = CommonHelper.getAppVersionList("turtle",
+		// "rickf@powin.com", "@rch1v@0317");
+		String archivaDataFile = CommonHelper.getLocalHome() + "archivaData.xml";
+		String jsonText = CommonHelper.convertXmlToJson(archivaDataFile).toString();
+		JSONObject json = JsonParserHelper.parseJsonFromString(jsonText);
+		List<String> result = new ArrayList<>();
+
+		JsonParserHelper.getFieldJSONObject(json, "metadata|versioning|versions|version", "", result);
+
+		result.addAll(Arrays.asList("3.1.0", "3.1.1", "3.1.2", "3.1.3", "3.1.4", "3.1.5", "3.1.6", "3.1.7", "3.1.8",
+				"3.1.9", "3.1.10"));
+		LOG.info(result.toString());
+		List<String> majors = result.stream().map(version -> {
+			return version.split("\\.")[0];
+		}).distinct().collect(Collectors.toList());
+		LOG.info(majors.toString());
+//		List<String> minors = result.stream().map(version -> { return version.split("\\.")[1]; }).distinct().collect(Collectors.toList());
+//		LOG.info(minors.toString());
+		Map<String, List<String>> major_VersionMap = new HashMap<>();
+		Map<String, List<String>> major_MinorMap = new HashMap<>();
+		Map<String, List<String>> minor_versionsMap = new HashMap<>();
+		Map<String, Map<String, List<String>>> versionsMap = new HashMap<>();
+		majors.forEach(major -> {
+			List<String> versions = result.stream().filter(version -> {
+				return version.split("\\.")[0].equals(major);
+			}).collect(Collectors.toList());
+			major_VersionMap.put(major, versions);
+		});
+
+		major_VersionMap.forEach((k, v) -> {
+			List<String> minor = v.stream().map(e -> e.split("\\.")[1]).distinct().collect(Collectors.toList());
+			major_MinorMap.put(k, minor);
+		});
+
+		majors.forEach(major -> {
+			List<String> versions = major_VersionMap.get(major);
+			List<String> lminors = major_MinorMap.get(major);
+			lminors.forEach(m -> {
+				List<String> revs = versions.stream().filter(v -> m.equals(v.split("\\.")[1]))
+						.map(v -> v.split("\\.")[2]).collect(Collectors.toList());
+				minor_versionsMap.put(m, revs);
+			});
+			versionsMap.put(major, minor_versionsMap);
+		});
+
+		LOG.info("minor_versionsMap" + minor_versionsMap);
+		LOG.info("Major_MinorMap" + major_MinorMap.toString());
+		LOG.info(result.toString());
+		LOG.info("Major_VersionMap" + major_VersionMap.toString());
+		LOG.info(versionsMap.toString());
+	}
+
+	@Test
+	public void testCompareIntegers() {
+		assertTrue(CommonHelper.compareIntegers(0, 0, 0, 0.1));
+		assertTrue(CommonHelper.compareIntegers(0, 0, 0, 0.0));
+		assertTrue(CommonHelper.compareIntegers(1, 0, 0, 1.01));
+		assertTrue(CommonHelper.compareIntegers(1, 2, 50, 1.01));
+	}
+
+	@Test
+	public void enableTurtleToolsTest() {
+		assertTrue(CommonHelper.enableTurtleTools());
+	}
+	
+	@Test
+	public void isTurtleToolsEnabledTest() {
+		CommonHelper.isTurtleToolsEnabled();
+	}
+	
+
+	@Test
+	public void convertDelimitedStringListToListOfLongListsTest() {
+		List<String> sourceList= new ArrayList<>();
+		sourceList.add("11|21");
+		sourceList.add("12|22");
+		List<List<Long>> targetList= new ArrayList<>();
+		List<Long> el1= Arrays.asList(11L,21L);
+		List<Long> el2= Arrays.asList(12L,22L);
+		targetList.add(el1);
+		targetList.add(el2);
+		List<List<Long>>computedList=CommonHelper.convertDelimitedStringListToListOfLongLists(sourceList);
+		assertEquals(targetList.toString(),computedList.toString());
+	}
+
+	@Test
+	public void convertStringListToLongListTest() {
+		List<String> sourceList = new ArrayList<>();
+		sourceList.add(" 11");
+		sourceList.add("12 ");
+		List<Long> targetList= new ArrayList<>();
+		targetList.add(11L);
+		targetList.add(12L);
+		List<Long> computedList= new ArrayList<>();
+		computedList=CommonHelper.convertStringListToLongList(sourceList);
+		assertEquals(targetList.toString(),computedList.toString());
+	}
+	@Test
+	public void backupAndDeleteFileTest(){
+		FileHelper.backupAndDeleteFile("/etc/powin/foo/*.json");
+	}
+	@Test
+	public void restartTurtleTomcatTest(){
+		CommonHelper.restartTurtleTomcat();
+	}
+	@Test
+	public void setInverterDefaults(){
+		SystemInfo.setZeroConfigLimits();
+		CommonHelper.setInverterDefaults();
+	}
+	
+	@Test
+	public void getBiLinearInterpolatedValueTest() {
+		double inputX = 8.63;
+		double inputY = 189.6;
+		double x1 = 8;
+		double x2 = 9;
+		double y1 = 173;
+		double y2 = 230;
+//		double Q11 = 84.1;//84.05;
+//		double Q12 = 83.9;//83.87;
+//		double Q21 = 83.3;//83.29;
+//		double Q22 = 83.1;//83.11;
+		
+		double Q11 = 84.05;
+		double Q12 = 83.87;
+		double Q21 = 83.29;
+		double Q22 = 83.11;
+
+		double interpolatedValue = CommonHelper.getBiLinearInterpolatedValue(inputX, inputY, x1, x2, y1, y2, Q11, Q21,Q12, Q22);
+		LOG.info("interpolatedValue= {}", interpolatedValue);
+		
+		double interpolatedValueRaw = 
+				Q11*(x2-inputX)*(y2-inputY) +
+				Q21*(inputX-x1)*(y2-inputY)+
+				Q12*(x2-inputX)*(inputY-y1)+
+				Q22*(inputX-x1)*(inputY-y1);
+		interpolatedValueRaw=interpolatedValueRaw/((x2-x1)*(y2-y1));
+		LOG.info("interpolatedValueRaw= {}", interpolatedValueRaw);
+	}	
+	
+	
+		
+	
+}

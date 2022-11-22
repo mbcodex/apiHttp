@@ -1,0 +1,139 @@
+package com.powin.modbusfiles.modbus;
+
+import java.math.BigDecimal;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.powin.modbus.ModbusException;
+import com.powin.modbus.sunspec.SunspecMasterEndpoint;
+import com.powin.modbus.sunspec.SunspecTcpMasterEndpointFactory;
+import com.powin.modbus.sunspec.blocks.ImmediateControlsBlockCommon.ConnEnum;
+import com.powin.modbus.sunspec.blocks.ImmediateControlsBlockCommon.OutPFSet_EnaEnum;
+import com.powin.modbus.sunspec.blocks.ImmediateControlsBlockCommon.VArPct_EnaEnum;
+import com.powin.modbus.sunspec.blocks.ImmediateControlsBlockMaster;
+import com.powin.modbusfiles.utilities.PowinProperty;
+
+public class Modbus123 {
+	private final static Logger LOG = LogManager.getLogger();
+
+	private final String cModbusHostName;
+	private final int cModbusPort;
+	private final int cModbusUnitId;
+	private final boolean cEnableModbusLogging;
+
+	private static ImmediateControlsBlockMaster cImmediateControlsBlockMaster;
+	private SunspecMasterEndpoint cSunspecMasterEndpoint;
+
+	public Modbus123(String modbusHostName, int modbusPort, int modbusUnitId, boolean enableModbusLogging) {
+		this.cModbusHostName = modbusHostName;
+		this.cModbusPort = modbusPort;
+		this.cModbusUnitId = modbusUnitId;
+		this.cEnableModbusLogging = enableModbusLogging;
+		init();
+	}
+
+	public void init() {
+		SunspecTcpMasterEndpointFactory mSunspecMasterEndpointFactory = new SunspecTcpMasterEndpointFactory(
+				cModbusHostName, cModbusPort, cModbusUnitId, cEnableModbusLogging, 10000);
+		cSunspecMasterEndpoint = mSunspecMasterEndpointFactory.getSunspecMasterEndpoint(null);
+		cImmediateControlsBlockMaster = cSunspecMasterEndpoint.getBlock(123, 0);
+		if (cImmediateControlsBlockMaster == null) {
+			throw new IllegalStateException("No Immediate Controls");
+		}
+	}
+
+	// Getters
+	public int getId() {
+		return cImmediateControlsBlockMaster.getId();
+	}
+
+	public int getBlockLength() {
+		return cImmediateControlsBlockMaster.getBlockLength();
+	}
+
+	public ConnEnum getPcsConnectionState()  throws ModbusException { 
+		return cImmediateControlsBlockMaster.getConn();
+	}
+
+	public ConnEnum setPcsConnectionState(boolean connect)  {
+		ConnEnum state = connect ? ConnEnum.CONNECT : ConnEnum.DISCONNECT;
+		try {
+			cImmediateControlsBlockMaster.setConn(state);
+			state = getPcsConnectionState();
+		} catch (ModbusException e) {
+			throw new RuntimeException(e);
+		}
+		return state;
+	}
+
+	public int getWMaxLimPct() throws ModbusException {
+		return cImmediateControlsBlockMaster.getWMaxLimPct().intValue();
+	}
+
+	public void setWMaxLimPct(BigDecimal percent) throws ModbusException {
+		cImmediateControlsBlockMaster.setWMaxLimPct(percent);
+	}
+
+	public void setVArWMaxPct(BigDecimal percent) throws ModbusException {
+		cImmediateControlsBlockMaster.setVArWMaxPct(percent);
+	}
+
+	public int getWMaxLimPct_SF() throws ModbusException {
+		return cImmediateControlsBlockMaster.getWMaxLimPct_SF();
+	}
+
+	public int getWMaxLim_Ena() throws ModbusException {// WMaxLim_Ena DISABLED(0),ENABLED (1)
+		return cImmediateControlsBlockMaster.getWMaxLim_EnaValue();
+	}
+
+	public int getOutPFSet() throws ModbusException {
+		return cImmediateControlsBlockMaster.getOutPFSet().intValue();
+	}
+
+	public void setOutPFSet(BigDecimal cosAngle) throws ModbusException {// Set power factor to specific value - cosine
+																			// of angle. TODO: Check if this
+																			// works
+		cImmediateControlsBlockMaster.setOutPFSet(cosAngle);
+	}
+
+	public OutPFSet_EnaEnum getOutPFSet_Ena() throws ModbusException {// OutPFSet_Ena DISABLED(0),ENABLED (1)
+		return cImmediateControlsBlockMaster.getOutPFSet_Ena();
+	}
+
+	public int getVArWMaxPct() throws ModbusException {
+		return cImmediateControlsBlockMaster.getVArWMaxPct().intValue();
+	}
+
+	public VArPct_EnaEnum getVArPct_Ena() throws ModbusException {// VArPct_Ena DISABLED(0),ENABLED (1)
+		return cImmediateControlsBlockMaster.getVArPct_Ena();
+	}
+
+	public int getOutPFSet_SF() throws ModbusException {
+		return cImmediateControlsBlockMaster.getOutPFSet_SF();
+	}
+
+	public static void main(String[] args)  {
+			Modbus123 mModbus123 = new Modbus123(PowinProperty.TURTLEHOST.toString(), 4502, 255, false);
+			mModbus123.init();
+			// LOG.info("Modbus123 getId is: {}", mModbus123.getId());//123
+			// LOG.info("Modbus123 getBlockLength is: {}", mModbus123.getBlockLength());//24
+			LOG.info("Modbus123 Conn is: {}", mModbus123.setPcsConnectionState(true));// CONNECT
+			// LOG.info("Modbus123 WMaxLimPct is: {}", mModbus123.getWMaxLimPct());//0
+			// LOG.info("Modbus123 WMaxLim_Ena is: {}", mModbus123.getWMaxLim_Ena());//1
+			// LOG.info("Modbus123 SetOutPFSet to 60 degrees");
+			// mModbus123.setOutPFSet(BigDecimal.valueOf(0.5));
+			// mModbus123.setWMaxLimPct(BigDecimal.valueOf(10.0));
+			// LOG.info("Modbus123 OutPFSet is: {}", mModbus123.getOutPFSet());//0 CHECK
+			// LOG.info("Modbus123 OutPFSet_Ena is: {}",
+			// mModbus123.getOutPFSet_Ena());//DISABLED
+			// LOG.info("Modbus123 Reactive power % of WMax is: {}",
+			// mModbus123.getVArWMaxPct());//0
+			// LOG.info("Modbus123 VArPct_Ena is: {}", mModbus123.getVArPct_Ena());//ENABLED
+			// LOG.info("Modbus123 WMaxLimPct_SF is: {}",
+			// mModbus123.getWMaxLimPct_SF());//-2
+			// LOG.info("Modbus123 SF for power factor is: {}",
+			// mModbus123.getOutPFSet_SF());//-2
+	}
+
+}

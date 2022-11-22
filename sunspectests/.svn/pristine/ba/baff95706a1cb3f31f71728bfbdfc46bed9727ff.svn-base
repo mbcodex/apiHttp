@@ -1,0 +1,180 @@
+package com.powin.modbusfiles.apps;
+
+import java.io.File;
+import java.nio.charset.Charset;
+import java.util.regex.Pattern;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.google.protobuf.ByteString;
+import com.powin.dragon.app.slowcharge.SlowChargeAppFactory;
+import com.powin.modbusfiles.utilities.AppInjectionCommon;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.FileHelper;
+import com.powin.modbusfiles.utilities.StringUtils;
+
+/**
+ * Test the high current protection app.
+ *
+ * @author Rick Fencl
+ *
+ */
+public class SlowChargeApp {
+	private final static Logger LOG = LogManager.getLogger();
+	private String restoreString = "";
+	protected String appConfigFilename;
+	protected static final String tempConfigFileContents = "{\n" + "  \"pausingCellVoltageMillivolts\" : 3550,\n"
+			+ "  \"stackCurrentAmps\" : 16,\n" + "  \"durationMilliseconds\" : 10800000,\n"
+			+ "  \"pauseDurationMilliseconds\" : 60000,\n" + "  \"balanceDeadbandMillivolts\" : 25,\n"
+			+ "  \"enabled\" : ${},\n" + "  \"appConfigName\" : \"instant\",\n" + "  \"appConfigVersion\" : 0\n" + "}";
+
+	public SlowChargeApp() {
+		appConfigFilename = FileHelper.appConfigFilenameBuilder(SlowChargeAppFactory.APPCODE,
+				Constants.SLOW_CHARGE_APP_PRIORITY);
+	}
+
+	/**
+	 * If the config file is present read it from the system.
+	 *
+	 * @param isEnable
+	 */
+	public void sendCommandToSlowChargeApp(boolean isEnable) {
+		LOG.trace("sendCommandToPowerCommandApp");
+		String commandText;
+		commandText = setEnabledValue(isEnable);
+		String appConfigName = StringUtils.getMatchString(commandText, "default|instant", Pattern.UNIX_LINES,
+				StringUtils.ReturnGroup.NONE, null);
+		AppInjectionCommon.getGoblinCommandDepot().addCommand("admin", AppInjectionCommon.buildCommand(isEnable,
+				ByteString.copyFrom(commandText, Charset.defaultCharset()), appConfigName, FileHelper
+						.getPriority(SlowChargeAppFactory.APPCODE, Constants.SLOW_CHARGE_APP_PRIORITY, Constants.HEED),
+				SlowChargeAppFactory.APPCODE));
+	}
+
+	protected void setRestoreString(String commandText) {
+		restoreString = commandText;
+	}
+
+	/**
+	 * replace the enable/disable place holder.
+	 *
+	 * @param isEnable
+	 * @return
+	 */
+	protected String setEnabledValue(boolean isEnable) {
+		return tempConfigFileContents.replace("${}", String.valueOf(isEnable));
+	}
+
+	/**
+	 * Disable the app in Kobold.
+	 */
+	public void disable() {
+		sendCommandToSlowChargeApp(Constants.DISABLE);
+	}
+
+	/**
+	 * Enable the app in Kobold
+	 */
+	public void enable() {
+		sendCommandToSlowChargeApp(Constants.ENABLE);
+	}
+
+	/**
+	 * Reads the configuration file from /etc/powin/app
+	 *
+	 * @param turtleHost
+	 * @return
+	 */
+	protected String readConfigFile(String turtleHost) {
+		String filecontents = "";
+		if ("localhost".equals(turtleHost)) {
+			filecontents = FileHelper.readFileAsString(appConfigFilename);
+		} else {
+			filecontents = FileHelper.readRemoteFileAsString(appConfigFilename, turtleHost, Constants.USER,
+					Constants.PW);
+		}
+		return filecontents;
+	}
+
+	/**
+	 * Restore app config file to the state before running the test.
+	 *
+	 * @param turtleHost
+	 * @return
+	 */
+	protected String writeConfigFile(String turtleHost) {
+		String filecontents = "";
+		if ("localhost".equals(turtleHost)) {
+			FileHelper.writeStringToFile(appConfigFilename, restoreString);
+		} else {
+			FileHelper.writeStringToRemoteFile(restoreString, appConfigFilename, turtleHost, Constants.PW);
+		}
+		return filecontents;
+	}
+
+	/**
+	 * Checks the file system for the configuration file.
+	 *
+	 * @param turtleHost
+	 * @return
+	 */
+	public boolean isAppConfigPresent(String turtleHost) {
+		boolean fileExists = false;
+		if ("localhost".equals(turtleHost)) {
+			fileExists = (new File(appConfigFilename)).exists();
+		} else {
+			fileExists = FileHelper.remoteFileExists(turtleHost, Constants.USER, Constants.PW, appConfigFilename);
+		}
+
+		return fileExists;
+	}
+
+	public boolean run(int caseNumber) {
+		return true;
+	}
+
+	// -----------------------------------------------------------------------------
+	// End public interface TODO Use AppInjectionCommon
+	// -----------------------------------------------------------------------------
+//	private Command buildCommand(boolean isEnable, ByteString byteString, String appConfigName) {
+//		Command mCommand = Command.newBuilder()
+//        		.setCommandId(UUID.randomUUID().toString())
+//                .setCommandSource(Endpoint.newBuilder().setEndpointType(EndpointType.GOBLIN))
+//                .setCommandTarget(Endpoint.newBuilder().setEndpointType(EndpointType.BLOCK)
+//                .setStationCode(SystemInfo.getStationCode())
+//                .setBlockIndex(SystemInfo.getBlockIndex()))
+//                .setCommandPayload(CommandPayload.newBuilder().setSetEMSApplicationConfiguration(buildEMSAppConfig(isEnable, byteString, appConfigName)))
+//                .build();
+//		return mCommand;
+//	}
+//
+//	private SetEMSApplicationConfiguration buildEMSAppConfig(boolean isEnabled, ByteString byteString, String appConfigName) {
+//		SetEMSApplicationConfiguration mSetEMSApplicationConfiguration = SetEMSApplicationConfiguration.newBuilder()
+//        		.setApplicationConfigurationName(appConfigName)
+//                .setApplicationConfigurationVersionid(0)
+//                .setApplicationTypeCode(SlowChargeAppFactory.APPCODE)
+//                .setApplicationPriority(Constants.SLOW_CHARGE_APP_PRIORITY)
+//                .setEnabled(isEnabled)
+//                .setRawApplicationConfiguration(byteString)
+//                .build();
+//		return mSetEMSApplicationConfiguration;
+//	}
+//
+//	private GoblinCommandDepot getGoblinCommandDepot() {
+//    	GenericObjectPoolConfig cGenericObjectPoolConfig = new GenericObjectPoolConfig();
+//    	cGenericObjectPoolConfig.setMinEvictableIdleTimeMillis(Constants.SIXTY_SECONDS);
+//    	cGenericObjectPoolConfig.setTestWhileIdle(Constants.ENABLE);
+//    	cGenericObjectPoolConfig.setTimeBetweenEvictionRunsMillis(Constants.THIRTY_SECONDS);
+//    	cGenericObjectPoolConfig.setNumTestsPerEvictionRun(1);
+//		JedisPool cJedisPool = new JedisPool(cGenericObjectPoolConfig, PowinProperty.CLOUDHOST.toString(), Constants.REDIS_PORT, (int)Constants.TEN_SECONDS, Constants.NO_SSL);
+//    	JedisPoolWrapper cJedisPoolWrapper = new JedisPoolWrapper();
+//    	cJedisPoolWrapper.setJedisPool(cJedisPool);
+//    	GoblinCommandDepot cGoblinCommandDepot= new GoblinCommandDepot();
+//    	cGoblinCommandDepot.setRedisEnabled(Constants.ENABLE);
+//    	cGoblinCommandDepot.setRedisPool(cJedisPoolWrapper);
+//    	cGoblinCommandDepot.setRedisKeyPrefix("gcd2");
+//    	cGoblinCommandDepot.init();
+//    	return cGoblinCommandDepot;
+//    }
+
+}

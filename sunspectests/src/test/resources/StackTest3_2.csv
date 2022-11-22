@@ -1,0 +1,10 @@
+Action,Qualifier,Duration,D-Value,Power,P-Value,Step,Comment
+Using,DirectP,,,,,,
+Discharge,Full,,,,,,
+Charge,,Hours,2,P/N,4,,
+Rest,,Seconds,10,,,,
+Comment,,,,,,,Record SOE Value
+Comment,,,,,,,Turn Off BMS
+Rest,,Minutes,10,,,,
+Comment,,,,,,,Restart BMS
+Comment,,,,,,,Record SOE Value

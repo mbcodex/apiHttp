@@ -1,0 +1,85 @@
+package com.powin.modbusfiles.apps;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
+
+import java.io.File;
+import java.util.stream.Stream;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import com.powin.modbusfiles.testbase.BaseIntegrationTest;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.FileHelper;
+
+class RealPowerCommandAppIntegrationTest extends BaseIntegrationTest {
+	private static RealPowerCommandApp realPowerCmdApp;
+	static {
+		BaseIntegrationTest.LOG = LogManager.getLogger();
+	}
+	
+	@BeforeAll
+	static void setupBeforeClass() throws Exception {
+		realPowerCmdApp = new RealPowerCommandApp();
+		// Delete Power Command app because it overrides this one.
+		File pca = new File("/etc/powin/app/app-4-PC00001.json");
+		boolean restartTurtle = FileHelper.resetDefaults();
+		restartTurtle |= CommonHelper.setInverterDefaults();
+		if (pca.exists()) {
+			FileUtils.deleteQuietly(pca);
+			restartTurtle = true;
+		}
+		File rpca = new File("/etc/powin/app/app-4-RPC0001.json");
+		if (restartTurtle || !rpca.exists()) {
+			realPowerCmdApp.disable();
+			CommonHelper.restartTurtleTomcat();
+		}
+		CommonHelper.waitForSystemReady();
+	}
+
+	@AfterAll
+	static void tearDownAfterClass() throws Exception {
+		realPowerCmdApp.disable();
+		LOG.info("Finish {}", RealPowerCommandAppIntegrationTest.class.getName());
+	}
+
+	@Tag("simulator")
+	@Tag("realpowercommand")
+	@Tag("verifyEnableTest")
+	@Test
+	void verifyEnableTest() {
+		assertTrue(realPowerCmdApp.verifyEnable(-55));
+	}
+
+	@Tag("simulator")
+	@Tag("realpowercommand")
+	@Tag("verifyDisableTest")
+	@Test
+	void verifyDisableTest() {
+		assertTrue(realPowerCmdApp.verifyDisable());
+	}
+
+	private static Stream<Arguments> targetPowerValues() {
+		return Stream.of(arguments(75), arguments(50), arguments(25), arguments(0), arguments(-75), arguments(-50),
+				arguments(-25));
+	}
+
+	@Tag("simulator")
+	@Tag("realpowercommand")
+	@Tag("verifyPowerTest")
+	@ParameterizedTest
+	@MethodSource("targetPowerValues")
+	void verifyPowerTest(int realPower) {
+		LOG.info("Start verifying the power of RealPowerCommand.");
+		assertTrue(realPowerCmdApp.verifyPower(realPower));
+	}
+}

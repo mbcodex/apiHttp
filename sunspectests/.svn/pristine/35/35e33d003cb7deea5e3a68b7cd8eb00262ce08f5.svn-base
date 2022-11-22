@@ -1,0 +1,40 @@
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
+
+public class TDiff {
+	
+	public enum ReturnGroup {
+		NONE, FIRST, SECOND, THIRD, FOURTH
+	}
+	
+	public static double getTimeDiffHours(String date1, String date2, String sformat) {
+		SimpleDateFormat format = new SimpleDateFormat(sformat);
+		Date d1;
+		Date d2;
+		long diffInMillies=0;
+		try {
+			d1 = format.parse(date1);
+			d2 = format.parse(date2);
+			diffInMillies = Math.abs(d2.getTime() - d1.getTime());
+		} catch (java.text.ParseException e) {
+			throw new RuntimeException(e);
+		}
+		
+		return diffInMillies/1000/60/60.0;
+	}
+	
+	
+	public static String parse(String line) {
+		StringBuilder ret = new StringBuilder();
+		String [] fields = line.split("\\t");
+		String name = fields[1];
+		String startTime = fields[2];
+		String endTime = fields[3];
+		ret.append(name).append(" ").append(startTime).append(" ").append(endTime).append(" ").append(getTimeDiffHours(startTime, endTime, "dd-MM-YYYY HH:mm:ss"));
+		return ret.toString();
+	}
+	public static void main(String [] args) {
+		System.out.println(parse(args[0]));
+	}
+}

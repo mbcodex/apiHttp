@@ -1,0 +1,247 @@
+package com.powin.modbusfiles.utilities;
+
+import static com.powin.modbusfiles.utilities.Constants.COBLYNAU;
+import static com.powin.modbusfiles.utilities.Constants.KNOCKER;
+import static com.powin.modbusfiles.utilities.Constants.KOBOLD;
+import static com.powin.modbusfiles.utilities.Constants.PRIMROSE;
+import static com.powin.modbusfiles.utilities.Constants.TURTLE;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import com.powin.modbusfiles.reports.SystemInfo;
+
+public class AppUpdateIntegrationTest {
+	private static final String APP_VERSION = "\\d\\.\\d\\d\\.\\d\\d?";
+	private final static Logger LOG = LogManager.getLogger();
+
+	@BeforeAll
+	public static void setupBeforeClass() throws Exception {
+	}
+
+	@AfterAll
+	public static void tearDownAfterClass() throws Exception {
+	}
+
+	@BeforeEach
+	public void setUp() throws Exception {
+
+	}
+
+	@AfterEach
+	public void tearDown() throws Exception {
+	}
+
+	/**
+	 * Pull version 2.21 latest and make sure that the versions have the correct
+	 * format.
+	 *
+	 * @throws Exception
+	 */
+	@Test
+	public void testGetCloudAppVersion() throws Exception {
+		(new AppUpdate()).getLatestCloudAppRevision("2", "21");
+		assertThat(AppUpdate.getCoblynauVersion().matches(APP_VERSION), is(true));
+		assertThat(AppUpdate.getTurtleVersion().matches(APP_VERSION), is(true));
+		assertThat(AppUpdate.getKnockerVersion().matches(APP_VERSION), is(true));
+		assertThat(AppUpdate.getKoboldVersion().matches(APP_VERSION), is(true));
+		assertThat(AppUpdate.getPrimroseVersion().matches(APP_VERSION), is(true));
+	}
+
+	@Test
+	public void getLatestAppVersions() {
+		String[] apps = { KOBOLD, KNOCKER, TURTLE, COBLYNAU, PRIMROSE };
+
+		Arrays.stream(apps).forEach(e -> {
+			String latestAppVersion = CommonHelper.getLatestAppVersion(e);
+			LOG.info("Latest {} {}", e, latestAppVersion);
+			assertThat(latestAppVersion.matches(APP_VERSION), is(true));
+		});
+
+	}
+
+	@Tag("updateArchiva")
+	@Test
+	public void testUpdateArchivaCredentials() {
+		LOG.info("Updating Archiva Credentials");
+		FileHelper.setFullPermissions("/home/powin/.m2/");
+		AppUpdate.updateArchivaCredentials();
+		String command = "echo powin | grep ";
+		String s = ScriptHelper.executeRemoteSSHCommand(PowinProperty.TURTLEHOST.toString(), "powin", "powin",
+				command + " username " + "/home/powin/.m2/settings.xml").get(0);
+		assertTrue(s.contains(PowinProperty.ARCHIVA_USER.toString()));
+		s = ScriptHelper.executeRemoteSSHCommand(PowinProperty.TURTLEHOST.toString(), "powin", "powin",
+				command + " password " + "/home/powin/.m2/settings.xml").get(0);
+		assertTrue(s.contains(PowinProperty.ARCHIVA_PASSWORD.toString()));
+	}
+
+
+
+	@Test
+	public void getInstalledAppVersions() {
+		AppUpdate.installedAppVersions = SystemInfo.getInstalledAppVersions();
+		LOG.info(AppUpdate.installedAppVersions);
+		FileHelper.writeStringToFile("./appVersions.txt", AppUpdate.installedAppVersions.toString());
+		Map<String, String> installedApps = StringUtils.mapFromString(FileHelper.readFileAsString("./appVersions.txt"));
+		assertEquals(installedApps, AppUpdate.installedAppVersions);
+	}
+	
+
+	@Test
+	public void updateClientTurtleAppRemote() {
+		Map<String, String> appVersions = StringUtils
+				.splitToMap(new String[] { Constants.TURTLE, "2.27.157", Constants.KOBOLD, "2.31.37", Constants.KNOCKER,
+						"2.31.8", Constants.COBLYNAU, "2.31.8", Constants.PRIMROSE, "2.31.2" });
+		AppUpdate.setAppVersionsForUpdate(appVersions);
+		(new AppUpdate()).updateClientTurtleApp(AppUpdate.TURTLEAPPUPDATEDIR+AppUpdate.TURTLEAPPUPDATEFILE, "", "", "/var/log/tomcat8", "/var/lib/tomcat8", "tomcat8", "10.0.0.75");
+	}
+	
+	@Test
+	public void testUpdateTurtleScriptText() {
+		Map<String, String> appVersions = StringUtils
+				.splitToMap(new String[] { Constants.TURTLE, "2.27.157", Constants.KOBOLD, "2.31.37", Constants.KNOCKER,
+						"2.31.8", Constants.COBLYNAU, "2.31.8", Constants.PRIMROSE, "2.31.2" });
+		AppUpdate.setAppVersionsForUpdate(appVersions);
+		String out1 = (new AppUpdate()).getAppUpdateScriptText("fred", "pw", AppUpdate.TURTLE_MASK);
+		LOG.info(out1);
+		
+		assertTrue(out1.contains("${TURTLE_VERSION}"));
+	}
+
+	@Test
+	public void updateClientCloudAppsRemote() {
+		Map<String, String> appVersions = StringUtils
+				.splitToMap(new String[] { Constants.TURTLE, "2.27.157", Constants.KOBOLD, "2.31.37", Constants.KNOCKER,
+						"2.31.8", Constants.COBLYNAU, "2.31.8", Constants.PRIMROSE, "2.31.2" });
+		AppUpdate.setAppVersionsForUpdate(appVersions);
+		(new AppUpdate()).updateClientCloudApps(AppUpdate.CLOUDAPPS_UPDATEDIR+AppUpdate.CLOUDAPPS_UPDATEFILE, "", "", AppUpdate.COBLYNAU_MASK|AppUpdate.PRIMROSE_MASK|AppUpdate.KOBOLD_MASK|AppUpdate.KNOCKER_MASK, "10.0.0.75");
+	}
+
+	@Test
+	public void testSetAppVersion() {
+		StringBuilder currentVersion = new StringBuilder("2.31.199");
+		Map<String, String> appVersionMap = new HashMap<>();
+		String appName = "turtle";
+		String newAppVersion = "2.37.10";
+		appVersionMap.put(appName, newAppVersion);
+		AppUpdate.setAppVersion(currentVersion, appVersionMap, appName);
+		assertEquals(newAppVersion, currentVersion.toString());
+	}
+	
+	/**
+	 * This is my current test
+	 */
+    private static Stream<Arguments> buildCloudUpdateScriptParameters() {
+    	return Stream.of(
+    			Arguments.of(AppUpdate.COBLYNAU_MASK, Arrays.asList("${COB_VERSION}")),
+    			Arguments.of(AppUpdate.PRIMROSE_MASK, Arrays.asList("${PRIMROSE_VERSION}")),
+    			Arguments.of(AppUpdate.KOBOLD_MASK, Arrays.asList("${KOBOLD_VERSION}")),
+    			Arguments.of(AppUpdate.KNOCKER_MASK, Arrays.asList("${KNOCKER_VERSION}")),
+    			Arguments.of(AppUpdate.COBLYNAU_MASK|AppUpdate.PRIMROSE_MASK, Arrays.asList("${COB_VERSION}", "${PRIMROSE_VERSION}")),
+    			Arguments.of(AppUpdate.COBLYNAU_MASK|AppUpdate.KOBOLD_MASK, Arrays.asList("${COB_VERSION}", "${KOBOLD_VERSION}")),
+    			Arguments.of(AppUpdate.COBLYNAU_MASK|AppUpdate.KNOCKER_MASK, Arrays.asList("${COB_VERSION}", "${KNOCKER_VERSION}")),
+    			Arguments.of(AppUpdate.PRIMROSE_MASK|AppUpdate.COBLYNAU_MASK, Arrays.asList("${PRIMROSE_VERSION}", "${COB_VERSION}")),
+    			Arguments.of(AppUpdate.PRIMROSE_MASK|AppUpdate.KOBOLD_MASK, Arrays.asList("${PRIMROSE_VERSION}", "${KOBOLD_VERSION}")),
+    			Arguments.of(AppUpdate.PRIMROSE_MASK|AppUpdate.KNOCKER_MASK, Arrays.asList("${PRIMROSE_VERSION}", "${KNOCKER_VERSION}")),
+    			Arguments.of(AppUpdate.KOBOLD_MASK|AppUpdate.COBLYNAU_MASK, Arrays.asList("${KOBOLD_VERSION}", "${COB_VERSION}")),
+    			Arguments.of(AppUpdate.KOBOLD_MASK|AppUpdate.PRIMROSE_MASK, Arrays.asList("${KOBOLD_VERSION}", "${PRIMROSE_VERSION}")),
+    			Arguments.of(AppUpdate.KOBOLD_MASK|AppUpdate.KNOCKER_MASK, Arrays.asList("${KOBOLD_VERSION}", "${KNOCKER_VERSION}")),
+    			Arguments.of(AppUpdate.KNOCKER_MASK|AppUpdate.COBLYNAU_MASK, Arrays.asList("${KNOCKER_VERSION}", "${COB_VERSION}")),
+    			Arguments.of(AppUpdate.KNOCKER_MASK|AppUpdate.PRIMROSE_MASK, Arrays.asList("${KNOCKER_VERSION}", "${PRIMROSE_VERSION}")),
+    			Arguments.of(AppUpdate.KNOCKER_MASK|AppUpdate.KOBOLD_MASK, Arrays.asList("${KNOCKER_VERSION}", "${KOBOLD_VERSION}")),
+    			Arguments.of(AppUpdate.COBLYNAU_MASK|AppUpdate.PRIMROSE_MASK|AppUpdate.KOBOLD_MASK|AppUpdate.KNOCKER_MASK, Arrays.asList("${COB_VERSION}", "${PRIMROSE_VERSION}","${KOBOLD_VERSION}", "${KNOCKER_VERSION}"))
+    			);
+    }
+
+    @ParameterizedTest
+	@MethodSource("buildCloudUpdateScriptParameters")
+	public void getCloudScriptText(int appMask, List<String> verifyString) {
+		Map<String, String> appVersions = StringUtils
+				.splitToMap(new String[] { Constants.TURTLE, "2.27.157", Constants.KOBOLD, "2.31.37", Constants.KNOCKER,
+						"2.31.8", Constants.COBLYNAU, "2.31.8", Constants.PRIMROSE, "2.31.2" });
+
+		AppUpdate.setAppVersionsForUpdate(appVersions);
+		String cloudUpdateScriptText = (new AppUpdate()).getAppUpdateScriptText("rickf@powin.com", "@rch1v@0317", appMask);
+		LOG.info(cloudUpdateScriptText);
+		for (String arg : verifyString)
+		   assertTrue(cloudUpdateScriptText.contains(arg));
+	}
+	
+	
+	@Tag("installcloudapps")
+	@Test
+	public void installCloud() {
+		(new AppUpdate()).updateCloudApps(System.getProperty("major"), System.getProperty("minor"));
+	}
+
+	@Tag("installturtleapp")
+	@Test
+	public void installTurtle() {
+		LOG.info("installing turtle");
+		String turtleVersion = System.getProperty("turtleVersion");
+		if (null == turtleVersion) {
+			(new AppUpdate()).updateTurtleApp(System.getProperty("major"), System.getProperty("minor"));
+		} else {
+			(new AppUpdate()).updateTurtleApp(turtleVersion);
+		}
+	}
+	
+	@Tag("installsmoketestapps") 
+	@Test
+	public void installSmokeTest() {
+		PowinProperty.loadProperties();
+		(new AppUpdate("smoke")).updateSmokeApps(System.getProperty("major"), System.getProperty("minor"));
+	}
+
+	/**
+	 * app versions are passed as system environment variables If the environment
+	 * variables are not set then do nothing. Download the apps that are changed.
+	 */
+	@Tag("installapps")
+	@Test
+	public void installApps() {
+		LOG.info("installing AllApps");
+
+		AppUpdate.installedAppVersions = SystemInfo.getInstalledAppVersions();
+		AppUpdate.setAppVersionsForUpdate(AppUpdate.installedAppVersions);
+		Map<String, String> appVersions = StringUtils.splitToMap(new String[] { Constants.TURTLE,
+				System.getProperty("turtleVersion"), Constants.KOBOLD, System.getProperty("koboldVersion"),
+				Constants.KNOCKER, System.getProperty("knockerVersion"), Constants.COBLYNAU,
+				System.getProperty("coblynauVersion"), Constants.PRIMROSE, System.getProperty("primroseVersion"), });
+		AppUpdate.setAppVersionsForUpdate(appVersions);
+		(new AppUpdate()).updateApps();
+
+		AppUpdate.installedAppVersions = SystemInfo.getInstalledAppVersions();
+		assertTrue(AppUpdate.verifyAppsUpdatedToRequestedVersion(appVersions));
+
+	}
+	@Tag("installTurtleAndCloudApps")
+	@Test
+	public void installTurtleAndCloudApps() {
+		AppUpdate mTest = new AppUpdate();
+		String major = "2";
+		String minor = "38";
+	    mTest.updateCloudApps(major, minor); 
+		mTest.updateTurtleApp(major, minor); 
+	}
+
+}

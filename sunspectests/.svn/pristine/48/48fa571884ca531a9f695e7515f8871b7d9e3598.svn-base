@@ -1,0 +1,22 @@
+{
+   "containerConfigurations":[
+      {
+         "containerIndex":1,
+         "containerName":"Triple B",
+         "hvacConfigurations":[
+            {
+               "hvacIndex":1,
+               "numberOfHvacs":1
+            }],
+         "stackMappingConfigurations":[
+
+            {
+               "arrayIndex":1,
+               "stringIndex":1,
+               "stringLocation":"BBB11B"
+            }
+         ]
+      }
+   ]
+}
+

@@ -1,0 +1,718 @@
+package com.powin.modbusfiles.reports;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.stream.Collectors;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+
+import com.amazonaws.util.StringUtils;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.HttpHelper;
+import com.powin.modbusfiles.utilities.PowinProperty;
+import com.powin.modbusfiles.utilities.TimeOut;
+// TODO Bloch Item 25 violation, move to Utilitiies.
+class LastcallTimerTask extends TimerTask {
+	
+	public LastcallTimerTask() {
+		super();
+		Lastcall.LOG.info("**** Starting Lastcall Timer Thread ****");
+
+	}
+	
+	@Override
+	public void run() {
+		try {
+			Lastcall.getLastCallJson();
+		} catch (Exception e) {
+			Lastcall.LOG.info("Lost connection to Lastcall URL");
+		}
+	}
+}
+/**
+ * This is a static helper class and cannot be instantiated.
+ * 
+ * JSONObjects implements Map, the 'keys' are indexes 1, 2, 3, 4 and need to be
+ * converted to strings. JSONArrays implements List, here the get method takes
+ * and integer.testGetAvgSoc
+ *
+ * @author powin
+ *
+ */
+// TODO Implement all of LastCalls here
+public class Lastcall {
+	private static final int PERIOD = 4 * Constants.ONE_SECOND;
+	private static final int DELAY = 3 * Constants.ONE_SECOND;
+
+	final static Logger LOG = LogManager.getLogger(Lastcall.class.getName());
+	private static String lastcallUrl = "";
+	private static LastcallTimerTask lastcallTimer;
+	private static JSONObject jo;
+	private static String monitor = "Monitor";
+    private static Timer timer = new Timer();
+
+    static {
+		init();
+	}
+
+	public static void init() {
+		getLastcallUrl();
+		getLastCallJson();
+		startLastCallTimer();
+	}
+
+	public static void startLastCallTimer() {
+		scheduleTimer(timer, lastcallTimer,  DELAY, PERIOD);
+	}
+	
+	public static void stopLastCallTimer() {
+		if (null != lastcallTimer) {
+		  lastcallTimer.cancel();
+		  lastcallTimer = null;
+		}
+	}
+
+	
+	/** TODO make this generic **/
+	public static void scheduleTimer(Timer timer, TimerTask timerTask, int delay, int period) {
+		if (null != timerTask) {
+		   timerTask.cancel();
+		}
+		if (null != timer) {
+			timer.purge();
+		}
+		timerTask = new LastcallTimerTask();
+		timer.schedule(timerTask, delay, period);
+	}
+
+	public static JSONObject getLastCallJson() {
+		HttpHelper hh = new HttpHelper(lastcallUrl);
+		synchronized(monitor) {
+		   jo = hh.getJSON();
+		}
+		return jo;
+	}
+
+	public static JSONObject getJSonObject(String keyName) {
+		JSONObject jsonObject = new JSONObject();
+		synchronized(monitor) {
+		  jsonObject = (JSONObject) jo.get(keyName);
+		}
+		return jsonObject;
+	}
+	private static String getLastcallUrl() {
+		if (lastcallUrl.isEmpty()) {
+			lastcallUrl = PowinProperty.TURTLE_URL.toString();
+			if (!lastcallUrl.endsWith("/")) {
+				lastcallUrl += "/";
+			}
+			lastcallUrl += "turtle/lastcall.json";
+		}
+		return lastcallUrl;
+	}
+
+	private Lastcall() {
+
+	}
+
+	protected static String getDragonAppSlotDataString() {
+		LOG.trace("Enter getDragonAppSlotDataString");
+		JSONObject dragonJsonObj = getJSonObject("dragonAppReport");
+		dragonJsonObj = (JSONObject) dragonJsonObj.get("dragonAppData");
+		JSONArray dragonDataArray = (JSONArray) dragonJsonObj.get("dragonAppSlotData");
+
+		for (int i = 0; i < dragonDataArray.size(); i++) {
+			JSONObject jobj = (JSONObject) dragonDataArray.get(i);
+			jobj.remove("reportValues");
+		}
+
+		String result = dragonDataArray.toString();
+		LOG.trace("Exit getDragonAppSlotDataString");
+		return result;
+	}
+
+	protected static String getTopologyNodesString() {
+		LOG.trace("Enter getTopologyNodesString");
+
+		JSONObject topJsonObj = getJSonObject("topologyReport");
+		JSONArray topDataArray = (JSONArray) topJsonObj.get("topologyNodes");
+
+		String result = topDataArray.toString();
+		LOG.trace("Exit getTopologyNodesString");
+		return result;
+	}
+
+	public static String getArrayPcsDataString(int arrayIndex, int pcsIndex) {
+		LOG.trace("Enter getArrayPcsDataString"); // arrayPcsDataJsonObj.toString());
+		JSONObject arrayJsonObj = getArrayJson(arrayIndex);
+		JSONObject arrayPcsReportJsonObj = (JSONObject) arrayJsonObj.get("arrayPcsReport");
+		arrayPcsReportJsonObj = (JSONObject) arrayPcsReportJsonObj.get(String.valueOf(pcsIndex));
+		JSONObject arrayPcsDataJsonObj = (JSONObject) arrayPcsReportJsonObj.get("arrayPcsData");
+
+		String result = arrayPcsDataJsonObj.toString();
+		LOG.trace("Exit getArrayPcsDataString");
+		return result;
+	}
+
+	private static JSONObject getArrayJson(int arrayIndex) {
+		JSONObject arrayReportJsonObj = Lastcall.getArrayReportJson();
+		return (JSONObject) arrayReportJsonObj.get(String.valueOf(arrayIndex));
+	}
+
+	public static JSONObject getArrayReportJson() {
+		JSONObject json = getBlockReportJson();
+		return getJsonObject(json, "arrayReport");
+	}
+
+	public static JSONObject getArrayDataJson(int arrayIndex) {
+		JSONObject json = Lastcall.getArrayJson(arrayIndex);
+		return getJsonObject(json, "arrayData");
+	}
+
+	public static JSONObject getBlockReportJson() {
+		LOG.trace("Enter getBlockReportJson");
+		return getJsonObject(jo, "blockReport");
+	}
+
+	private static JSONObject getJsonObject(JSONObject jo, String tagname) {
+		JSONObject json = null == jo ? new JSONObject() : (JSONObject) jo.get(tagname);
+		return null == json ? new JSONObject() : json;
+	}
+
+	public static ArrayData getArrayData(int arrayIndex) {
+		LOG.trace("Entering getArrayData");
+		ArrayData arrayData = null;
+		ObjectMapper objectMapper = new ObjectMapper();
+		try {
+			arrayData = objectMapper.readValue(getArrayDataJson(arrayIndex).toString(), ArrayData.class);
+		} catch (IOException e) {
+			LOG.error("Unable to map json object", e);
+			throw new RuntimeException(e.getMessage());
+		}
+		LOG.trace("Exiting getArrayData");
+		return arrayData;
+	}
+
+	public static ArrayPcsData getArrayPcsData(int arrayIndex, int pcsIndex) {
+		LOG.trace("Entering getArrayPcsData");
+		ObjectMapper objectMapper = new ObjectMapper();
+		ArrayPcsData pcsData = null;
+		try {
+			pcsData = objectMapper.readValue(getArrayPcsDataString(arrayIndex, pcsIndex), ArrayPcsData.class);
+		} catch (IOException e) {
+			LOG.error("Unable to map json object", e);
+			throw new RuntimeException(e.getMessage());
+		}
+		LOG.trace("Exiting getArrayPcsData");
+		return pcsData;
+	}
+
+	public static ArrayReport getArrayReport() {
+		ObjectMapper objectMapper = new ObjectMapper();
+		ArrayReport arrayReport = null;
+		try {
+			arrayReport = objectMapper.readValue(getArrayReportJson().toString(), ArrayReport.class);
+		} catch (IOException e) {
+			LOG.error("Unable to map json object", e);
+			throw new RuntimeException(e.getMessage());
+		}
+		return arrayReport;
+	}
+
+	public static DragonAppSlotData[] getDragonAppList() {
+		LOG.trace("Entering getDragonAppList");
+		ObjectMapper objectMapper = new ObjectMapper();
+		DragonAppSlotData[] appsData = null;
+		try {
+			appsData = objectMapper.readValue(getDragonAppSlotDataString(), DragonAppSlotData[].class);
+		} catch (IOException e) {
+			LOG.error("Unable to map json object", e);
+			throw new RuntimeException(e.getMessage());
+		}
+		LOG.trace("Exiting getDragonAppList");
+		return appsData;
+	}
+
+	public static TopologyNode[] getTopologyNodeList() {
+		LOG.trace("Entering getTopologyNodeList");
+		ObjectMapper objectMapper = new ObjectMapper();
+		TopologyNode[] appsData = null;
+		try {
+			appsData = objectMapper.readValue(getTopologyNodesString(), TopologyNode[].class);
+		} catch (IOException e) {
+			LOG.error("Unable to map json object", e);
+			throw new RuntimeException(e.getMessage());
+		}
+		LOG.trace("Exiting getDragonAppList");
+		return appsData;
+	}
+
+	public static String getTopologyNodeStatus(String entitySubType) {
+		LOG.trace("Entering getToplogyNodeStatus");
+		TopologyNode tn = getTopologyNode(entitySubType);
+		if (tn != null) {
+			return tn.getStatusMessage();
+		} else {
+			RuntimeException rte = new RuntimeException("appData is null!");
+			LOG.error("Exception reading lastcall", rte);
+			throw rte;
+		}
+	}
+
+	public static TopologyNode getTopologyNode(String entitySubType) {
+		LOG.trace("Entering getTopologyNode {}", entitySubType);
+		TopologyNode[] appList = getTopologyNodeList();
+		TopologyNode tn = null;
+		if (appList != null && appList.length > 0) {
+			for (TopologyNode data : appList) {
+				if (data.getEntitySubType().toLowerCase().equals(entitySubType.toLowerCase())) {
+					tn = data;
+					break;
+				}
+			}
+		}
+		LOG.trace("Exiting getTopologyNode {}", tn);
+		return tn;
+	}
+
+	/**
+	 * Returns the app status from the json
+	 *
+	 * @param appCode
+	 * @return
+	 */
+	public static String getAppStatus(String appCode) {
+		return getAppStatus(getAppData(appCode));
+	}
+
+	private static String getAppStatus(DragonAppSlotData appData) {
+		if (appData != null) {
+			LOG.info("Appstatus: {}", appData.getAppStatus());
+			return appData.getAppStatus();
+		} else {
+			RuntimeException e = new RuntimeException("appData is null!");
+			LOG.error("", e);
+			throw e;
+		}
+	}
+
+	public static String getAppEnableStatus(String appCode) {
+		LOG.trace("Entering getAppEnableStatus");
+		DragonAppSlotData appData = getAppData(appCode, 5);
+		if (appData != null) {
+			return appData.getEnabled();
+		} else {
+			RuntimeException e = new RuntimeException("appData is null!");
+			throw e;
+		}
+	}
+
+	public static String getAppEnableStatus(String appcode, long priority) {
+		return getAppData(appcode, priority).getEnabled();
+	}
+
+	public static boolean isEnabled(String appCode) {
+		LOG.trace("Entering isEnabled");
+		DragonAppSlotData appData = getAppData(appCode);
+		if (appData != null) {
+			return Boolean.valueOf(appData.getEnabled());
+		} else {
+			RuntimeException e = new RuntimeException("appData is null!");
+			throw e;
+		}
+	}
+
+	public static DragonAppSlotData getAppData(String appCode) {
+		LOG.info("getAppData for {}", appCode);
+		List<DragonAppSlotData> appList = getAppDataList(appCode);
+		return !appList.isEmpty() ? appList.get(0) : new DragonAppSlotData();
+	}
+	
+	public static List<DragonAppSlotData> getAppDataList() {
+		return Arrays.asList(getDragonAppList()).stream()
+				.collect(Collectors.toList());
+	}
+
+	private static List<DragonAppSlotData> getAppDataList(String appCode) {
+		return Arrays.asList(getDragonAppList()).stream()
+				.filter(data -> data.getAppCode().toLowerCase().contentEquals(appCode.toLowerCase()))
+				.collect(Collectors.toList());
+	}
+
+	public static DragonAppSlotData getAppData(String appCode, long priority) {
+		LOG.info("getAppData for {}", appCode);
+		List<DragonAppSlotData> appDataList = getAppDataList(appCode).stream()
+				.filter(data -> data.getPriority().contentEquals(String.valueOf(priority)))
+				.collect(Collectors.toList());
+
+		return !appDataList.isEmpty() ? appDataList.get(0) : new DragonAppSlotData();
+	}
+
+	public static DragonAppSlotData getAppData(String appCode, int retryCount) {
+		LOG.info("getAppData for {}", appCode);
+		DragonAppSlotData appData = getAppData(appCode);
+		boolean found = false;
+		int retries = retryCount;
+		while (!found && retries > 0) {
+			appData = getAppData(appCode);
+			if ( !StringUtils.isNullOrEmpty(appData.getAppCode()) ) {
+				found = true;
+			} else {
+				retries--;
+			}
+		}
+		return appData;
+	}
+
+	public static String getDcBatteryDataString(int arrayIndex) {
+		JSONObject blockReportJsonObject = getBlockReportJson();
+		LOG.trace("Enter getDcBatteryDataString");
+		JSONObject dcBatteryReportsJsonObj = (JSONObject) blockReportJsonObject.get("dcBatteryReport");
+		JSONObject dcBatteryReportJsonObj = (JSONObject) dcBatteryReportsJsonObj.get(String.valueOf(arrayIndex));
+		JSONObject dcBatteryDataJsonObj = (JSONObject) dcBatteryReportJsonObj.get("dcBatteryData");
+		String result = dcBatteryDataJsonObj.toString();
+		LOG.trace("Exit getDcBatteryDataString");
+		return result;
+	}
+
+	public static DcBatteryData getDcBatteryData(int arrayIndex) {
+		ObjectMapper objectMapper = new ObjectMapper();
+		DcBatteryData dcBatteryData = null;
+		try {
+			dcBatteryData = objectMapper.readValue(getDcBatteryDataString(arrayIndex), DcBatteryData.class);
+		} catch (IOException e) {
+			LOG.error("Unable to map json object", e);
+			throw new RuntimeException(e.getMessage());
+		}
+		return dcBatteryData;
+	}
+
+	public static String getBlockMeterDataString(int meterIndex) {
+		LOG.trace("Enter getBlockMeterDataString");
+		JSONObject blockReportJsonObject = getBlockReportJson();
+		String result = null;
+		JSONObject blockMeterReportsJsonObj = (JSONObject) blockReportJsonObject.get("blockMeterReport");
+		JSONObject blockMeterReportJsonObj = (JSONObject) blockMeterReportsJsonObj.get(String.valueOf(meterIndex));
+		if (null != blockMeterReportJsonObj) {
+			JSONObject blockMeterDataJsonObj = (JSONObject) blockMeterReportJsonObj.get("blockMeterData");
+			result = blockMeterDataJsonObj.toString();
+		}
+		LOG.trace("Exit getBlockMeterDataString");
+		return result;
+	}
+ 
+	public static BlockMeterData getBlockMeterData(int meterIndex) {
+		ObjectMapper objectMapper = new ObjectMapper();
+		BlockMeterData meterData = null;
+		String blockMeterDataString = getBlockMeterDataString(meterIndex);
+		if (blockMeterDataString != null) {
+			try {
+				meterData = objectMapper.readValue(blockMeterDataString, BlockMeterData.class);
+			} catch (IOException e) {
+				LOG.error("Unable to map json object", e);
+				throw new RuntimeException(e.getMessage());
+			} 
+		} else {
+			LOG.error("Meter index {} is out of bounds.", meterIndex);
+		}
+		return meterData;
+	}
+
+	public static String getAcBatteryDataString(int arrayIndex) {
+		LOG.trace("Enter getAcBatteryDataString");
+		JSONObject blockReportJsonObject = getBlockReportJson();
+		JSONObject acBatteryReportsJsonObj = (JSONObject) blockReportJsonObject.get("acBatteryReport");
+		JSONObject acBatteryReportJsonObj = (JSONObject) acBatteryReportsJsonObj.get(String.valueOf(arrayIndex));
+		JSONObject acBatteryDataJsonObj = (JSONObject) acBatteryReportJsonObj.get("acBatteryData");
+		String result = acBatteryDataJsonObj.toString();
+		LOG.trace("Exit getAcBatteryDataString");
+		return result;
+	}
+
+	public static AcBatteryData getAcBatteryData(int arrayIndex) {
+		ObjectMapper objectMapper = new ObjectMapper();
+		AcBatteryData acBatteryData = null;
+		String timer = TimeOut.create(Constants.FIVE_MINUTES);
+		int count = 0;
+		do {
+			try {
+				acBatteryData = objectMapper.readValue(getAcBatteryDataString(arrayIndex), AcBatteryData.class);
+			} catch (IOException e) {
+				LOG.error("Unable to map json object", e);
+				throw new RuntimeException(e.getMessage());
+			} catch (Exception e) {
+				LOG.info("Waiting for Lastcall....");
+				CommonHelper.quietSleep(Constants.FIVE_SECONDS);
+				++count;
+				if (count %20 == 0) {
+					CommonHelper.restartTurtleTomcat();
+				}
+			}
+		} while  (null == acBatteryData || TimeOut.isExpired(timer));
+        TimeOut.remove(timer);
+		return acBatteryData;
+	}
+
+	protected static String getStringConfigDataString(int arrayIndex, int stringIndex) {
+		LOG.trace("Enter getStringConfigDataString");
+		JSONObject blockReportJsonObject = getBlockReportJson();
+		JSONObject configReportsJSON = getJSONObjectModify(blockReportJsonObject, "configReport");
+		JSONObject arrayConfigReportJSON = getJSONObjectModify(configReportsJSON, String.valueOf(arrayIndex));
+		JSONObject stringConfigDataReportJSON = getJSONObjectModify(arrayConfigReportJSON, "stringConfigData");
+		JSONObject stringIndexDataReportJSON = getJSONObjectModify(stringConfigDataReportJSON,
+				String.valueOf(stringIndex));
+
+		String result = stringIndexDataReportJSON.toString();
+		LOG.trace("Exit getStringConfigDataString");
+		return result;
+	}
+
+	private static JSONObject getJSONObjectModify(JSONObject parentJSONObject, String childObjectName) {
+		JSONObject ret = null != parentJSONObject ? (JSONObject) parentJSONObject.get(childObjectName) : null;
+		if (ret == null) {
+			throw new RuntimeException(
+					"There is a null returned for " + parentJSONObject.toString() + " at:" + childObjectName);
+		}
+		return ret;
+
+	}
+
+	public static List<StringConfigData> getStringConfigDataList(int arrayIndex) {
+		List<StringConfigData> configList = new ArrayList<StringConfigData>();
+		List<StringReport> stringList = getStringReportList(Integer.parseInt(PowinProperty.ARRAY_INDEX.toString()));
+		ObjectMapper objectMapper = new ObjectMapper();
+		for (int i = 0; i < stringList.size(); i++) {
+			try {
+				String dataString = getStringConfigDataString(arrayIndex, stringList.get(i).getStringIndex());
+				if (dataString != null && dataString.isEmpty() == false) {
+					StringConfigData data = objectMapper.readValue(dataString, StringConfigData.class);
+					if (data != null)
+						configList.add(data);
+				}
+			} catch (IOException e) {
+				LOG.error("Unable to map json object", e);
+				throw new RuntimeException(e.getMessage());
+			}
+		}
+		return configList;
+	}
+
+	public static StringConfigData getStringConfigData(int arrayIndex, int stringIndex) {
+		ObjectMapper objectMapper = new ObjectMapper();
+		try {
+			String dataString = getStringConfigDataString(arrayIndex, stringIndex);
+			if (dataString != null && dataString.isEmpty() == false) {
+				StringConfigData data = objectMapper.readValue(dataString, StringConfigData.class);
+				if (data != null)
+					return data;
+			}
+		} catch (IOException e) {
+			LOG.error("Unable to map json object", e);
+			throw new RuntimeException(e.getMessage());
+		}
+		return null;
+	}
+
+	/**
+	 * Get the string report list for all strings that are in rotation
+	 *
+	 * @param arrayIndex
+	 * @return
+	 */
+	@SuppressWarnings("unchecked")
+	public static List<StringReport> getStringReportList(int arrayIndex) {
+		List<StringReport> ret = getStringReportListAll(arrayIndex);
+		return ret.stream().filter(e -> !e.getStringData().getOutRotation()).collect(Collectors.toList());
+	}
+
+	@SuppressWarnings("unchecked")
+	public static List<StringReport> getStringReportListAll(int arrayIndex) {
+		JSONObject stringreportJsonObj = getBlockReportJson();
+		stringreportJsonObj = (JSONObject) stringreportJsonObj.get("arrayReport");
+		stringreportJsonObj = (JSONObject) stringreportJsonObj.get(String.valueOf(arrayIndex));
+		stringreportJsonObj = (JSONObject) stringreportJsonObj.get("stringReport");
+		Collection<JSONObject> values = stringreportJsonObj.values();
+
+		ObjectMapper objectMapper = new ObjectMapper();
+		List<StringReport> ret = values.stream().map(e -> {
+			StringReport sr = null;
+			try {
+				sr = objectMapper.readValue(e.toString(), StringReport.class);
+			} catch (IOException e1) {
+				throw new RuntimeException(e1);
+			}
+			return sr;
+		}).collect(Collectors.toList());
+		return ret;
+	}
+
+	/**
+	 * Returns a StringReport for the given stringIndex.
+	 *
+	 * @param arrayIndex
+	 * @param stringIndex
+	 * @return
+	 */
+	public static StringReport getStringReport(int arrayIndex, int stringIndex) {
+		LOG.trace("Enter getStringReport(arrayIndex, stringIndex)");
+		List<StringReport> stringReports = getStringReportList(arrayIndex);
+		return getStringReport(stringReports, stringIndex);
+	}
+
+	public static StringReport getStringReport(List<StringReport> stringReports, int stringIndex) {
+		StringReport sr = new StringReport();
+		List<StringReport> collect = stringReports.stream().filter(e -> e.getStringIndex() == stringIndex).collect(Collectors.toList());
+		if (!collect.isEmpty()) {
+			sr = collect.get(0);
+		}
+		return sr;
+	}
+	
+	public static String getStationCode() {
+		JSONObject stationCodeJsonObj = getBlockReportJson();
+		String stationCode = stationCodeJsonObj.get("stationCode").toString();
+		return stationCode;
+	}
+
+	public static int getBlockIndex() {
+		JSONObject blockIndexJsonObj = getBlockReportJson();
+		int blockIndex = Integer.parseInt(blockIndexJsonObj.get("blockIndex").toString());
+		return blockIndex;
+	}
+
+	public static List<BessStatusCodeEntry> getBessStatusCodeList() {
+		LOG.trace("Entering getBessStatusCodeList");
+		ObjectMapper objectMapper = new ObjectMapper();
+		BessStatusCodeEntry[] data = null;
+		try {
+			data = objectMapper.readValue(getBessStatusCodeListString(), BessStatusCodeEntry[].class);
+		} catch (IOException e) {
+			LOG.error("Unable to map json object", e);
+			throw new RuntimeException(e.getMessage());
+		}
+		LOG.trace("Exiting getBessStatusCodeList");
+		return Arrays.asList(data);
+	}
+
+	protected static String getBessStatusCodeListString() {
+		LOG.trace("Enter getBessStatusCodeListString");
+		JSONObject jsonObj = getBlockReportJson();
+		JSONArray jsonArray = (JSONArray) jsonObj.get("bessStatusCode");
+		String result = jsonArray.toString();
+		LOG.trace("Exit getBessStatusCodeListString");
+		return result;
+	}
+
+	public static NotificationReport getNotificationReport() {
+		LOG.trace("Entering getNotificationList");
+		ObjectMapper objectMapper = new ObjectMapper();
+		NotificationReport report = null;
+
+		try {
+			report = objectMapper.readValue(getNotificationReportString(), NotificationReport.class);
+		} catch (IOException e) {
+			LOG.error("Unable to map json object", e);
+			throw new RuntimeException(e.getMessage());
+		}
+
+		LOG.trace("Exiting getNotificationList");
+		return report;
+	}
+
+	protected static String getNotificationReportString() {
+		LOG.trace("Enter getNotificationListString");
+		JSONObject notificationReport = getJSonObject("notificationReport");
+		String result = notificationReport.toString();
+		LOG.trace("Exit getNotificationListString");
+		return result;
+	}
+
+	public static List<Notification> getNotificationList() {
+		LOG.trace("Entering getNotificationList");
+		ObjectMapper objectMapper = new ObjectMapper();
+		Notification[] lst = null;
+
+		try {
+			lst = objectMapper.readValue(getNotificationListString(), Notification[].class);
+		} catch (IOException e) {
+			LOG.error("Unable to map json object", e);
+			throw new RuntimeException(e.getMessage());
+		}
+
+		LOG.trace("Exiting getNotificationList");
+		return Arrays.asList(lst);
+	}
+
+	protected static String getNotificationListString() {
+		LOG.trace("Enter getNotificationListString");
+		JSONObject jsonObj = getJSonObject("notificationReport");
+		JSONArray jsonArray = (JSONArray) jsonObj.get("notification");
+		String result = jsonArray.toString();
+		LOG.trace("Exit getNotificationListString");
+		return result;
+	}
+
+	public static List<BatteryPackReport> getBatteryPackReportList() {
+		List<StringReport> stringList = Lastcall.getStringReportList(PowinProperty.ARRAY_INDEX.intValue());
+		List<BatteryPackReport> batteryPackReportList = stringList.get(0).getBatteryPackReportList();
+		return batteryPackReportList;
+	}
+
+	public static int getPhaseVoltage(int arrayIndex, int pcsIndex, String phaseFrom, String phaseTo) {
+		ArrayPcsData arrayPcsData = getArrayPcsData(arrayIndex, pcsIndex);
+		List<ArrayPcsPhaseData> arrayPcsPhaseDataList = arrayPcsData.getArrayPcsPhaseData();
+		ArrayPcsPhaseData arrayPcsPhaseData = arrayPcsPhaseDataList.stream()
+				.filter(phaseData -> phaseData.getArrayPcsPhase().contentEquals(phaseFrom))
+				.filter(phaseData -> phaseData.getArrayPcsPhaseVoltageMeasuremeantType().contentEquals(phaseTo))
+				.collect(Collectors.toList()).get(0);
+		return arrayPcsPhaseData.getAcVoltageVolt();
+	}
+
+	public static int getPhaseVoltageAN(int arrayIndex, int pcsIndex) {
+		return getPhaseVoltage(arrayIndex, pcsIndex, "PHASE_A", "TO_NEUTRAL");
+	}
+
+	public static int getPhaseVoltageBN(int arrayIndex, int pcsIndex) {
+		return getPhaseVoltage(arrayIndex, pcsIndex, "PHASE_B", "TO_NEUTRAL");
+	}
+
+	public static int getPhaseVoltageCN(int arrayIndex, int pcsIndex) {
+		return getPhaseVoltage(arrayIndex, pcsIndex, "PHASE_C", "TO_NEUTRAL");
+	}
+
+	public static int getPhaseVoltageAB(int arrayIndex, int pcsIndex) {
+		return getPhaseVoltage(arrayIndex, pcsIndex, "PHASE_A", "TO_PHASE_B");
+	}
+
+	public static int getPhaseVoltageBC(int arrayIndex, int pcsIndex) {
+		return getPhaseVoltage(arrayIndex, pcsIndex, "PHASE_B", "TO_PHASE_C");
+	}
+
+	public static int getPhaseVoltageCA(int arrayIndex, int pcsIndex) {
+		return getPhaseVoltage(arrayIndex, pcsIndex, "PHASE_C", "TO_PHASE_A");
+	}
+
+	public static String getRequestId() {
+		String requestId = "";
+		requestId = getJSonObject("requestId").toString();
+		return requestId;
+	}
+
+	public static String getRequestTimeStamp() {
+		String timeStamp = "";
+		timeStamp = getJSonObject("requestTimestamp").toString();
+		return timeStamp;
+	}
+
+
+}

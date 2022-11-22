@@ -1,0 +1,14 @@
+#!/bin/bash
+MACHINE_NAME="RegressionC"
+#This is the name of the VM in VirtualBox
+
+# Load the IP addresses of the client VMs.
+set +e
+echo powin | sudo -S cp /media/sf_Common/RegressionClients /tmp/t
+echo powin | sudo -S chmod 755 /tmp/t
+. /tmp/t
+
+MACHINE=$REGRESSION_C
+
+# $@ pass the parameters from job config in Jenkins
+. /home/powin/RegressionMachines/commonPartitionedTest $@

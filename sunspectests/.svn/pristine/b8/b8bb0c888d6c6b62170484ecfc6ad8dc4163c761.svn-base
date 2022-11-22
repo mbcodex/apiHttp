@@ -1,0 +1,79 @@
+package com.powin.modbusfiles.cycling;
+
+import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.Queue;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.powin.modbusfiles.cycling.AppController.AppControl;
+import com.powin.modbusfiles.utilities.CommonHelper;
+import com.powin.modbusfiles.utilities.Constants;
+import com.powin.modbusfiles.utilities.PowinProperty;
+import com.powin.modbusfiles.utilities.TimeOut;
+
+/**
+ * Charge BasicOp (Power) -> Discharge BasicOp (Power) To preserve the method
+ * signature of run with BasicOpCycler the variable slowcharge times are passed
+ * through a local queue member.
+ *
+ * @author RAF
+ *
+ */
+public class SymmetricBCD2_1 extends BasicOpCycler {
+	private final static Logger LOG = LogManager.getLogger();
+	private static final int SOC_10 = 10;
+	private static final int SOC_35 = 35;
+	private static final int SOC_100 = 100;
+	private static final long NO_TIME_LIMIT = 0;
+	private static final int MAX_P = 56;
+	private static final boolean START_WITH_DISCHARGE = false;
+	private static final Queue<Integer> slowchargeInterval = new LinkedList<>(Arrays.asList(4, 6, 8));
+
+	public void rest(int minutes) {
+		// movePower(Constants.PRIORITY_POWER, 0, Constants.NO_TARGET_SOC, minutes,
+		// FIVE_MINUTES);
+		CommonHelper.sleep(1000 * minutes);
+	}
+
+	@Override
+	public void run(int kw, int soc) {
+		stopApps();
+		closeContactorsWithBasicOp();
+		AppController.controlApps(AppControl.START_BASICOP);
+		movePower(Constants.PRIORITY_POWER, kw, soc, NO_TIME_LIMIT); // Discharge until contactors open
+		closeContactorsWithBasicOp();
+		movePower(Constants.PRIORITY_SOC, -kw, SOC_10, NO_TIME_LIMIT);
+
+		movePower(Constants.PRIORITY_POWER, -kw, SOC_100, NO_TIME_LIMIT);
+		AppController.controlApps(AppControl.STOP_BASICOP);
+		AppController.controlApps(AppControl.START_SLOWCHARGE);
+		String timer = TimeOut.create(Constants.ONE_HOUR * Constants.SECONDS_PER_MINUTE * slowchargeInterval.remove());
+		while (!TimeOut.isExpired(timer)) {
+			CommonHelper.quietSleep(Constants.FIVE_MINUTES);
+		}
+		AppController.controlApps(AppControl.STOP_SLOWCHARGE);
+		rest(Constants.ONE_HOUR);
+	}
+
+	public static BasicOpCycler getBasicOpsCycler() {
+		BasicOpCycler mBasicOpCycler = new WeekEnd_468_225();
+		mBasicOpCycler.setModbusHostName(PowinProperty.TURTLEHOST.toString());
+		mBasicOpCycler.setModbusPort(Constants.MODBUS_PORT);
+		mBasicOpCycler.setModbusUnitId(Constants.MODBUS_UNIT_ID);
+		mBasicOpCycler.setEnableModbusLogging(false);
+		return mBasicOpCycler;
+	}
+
+	public static void main(String[] args) {
+		initSystem();
+		BasicOpCycler mBasicOpCycler = getBasicOpsCycler();
+		while (!slowchargeInterval.isEmpty()) {
+			mBasicOpCycler.run(MAX_P, Constants.NO_TARGET_SOC);
+		}
+
+		restoreSystem();
+		// (new SymmetricBCD2_1()).closeContactors();
+	}
+}

@@ -1,0 +1,113 @@
+package com.powin.modbusfiles.apps;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.apache.logging.log4j.LogManager;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
+
+import com.powin.modbusfiles.modbus.ModbusPowinBlock;
+import com.powin.modbusfiles.testbase.BaseIntegrationTest;
+
+@Disabled
+class SunspecDisconnectAppIntegrationTest extends BaseIntegrationTest {
+	private static SunspecDisconnectApp sunspecDisconnectApp;
+
+	static {
+		BaseIntegrationTest.LOG = LogManager.getLogger();
+	}
+		@BeforeAll
+	static void setupBeforeClass() throws Exception {
+		initSystemForRegression();
+		sunspecDisconnectApp = new SunspecDisconnectApp();
+		ModbusPowinBlock.getModbusPowinBlock().disableBasicOp();
+	}
+
+	@AfterAll
+	static void tearDownAfterClass() throws Exception {
+		ModbusPowinBlock.getModbusPowinBlock().disableBasicOp();
+		SunspecDisconnectApp.connectPcs();
+		sunspecDisconnectApp.disableSunspecDisconnectApp();
+//		// TODO This bit seems like a waste of time, just call initSystemForRegression again.
+//		Set<Integer> appSet = new HashSet<Integer>();
+//		appSet.add(3);
+//		AppInjectionCommon.deleteAppConfigsAndRestartTomcat(appSet);
+		LOG.info("SunspecDisconnectAppIntegrationTest Leaving...");
+	}
+
+	@Override
+	@BeforeEach
+	public void setup(TestInfo testInfo) {
+		super.setup(testInfo);
+		assertTrue(SunspecDisconnectApp.connectPcs());
+		assertTrue(sunspecDisconnectApp.enableSunspecDisconnectApp());
+	}
+
+	@Override
+	@AfterEach
+	public void tearDown(TestInfo testInfo) {
+		ModbusPowinBlock.getModbusPowinBlock().disableBasicOp();
+		super.tearDown(testInfo);
+	}
+
+	@Tag("simulator")
+	@Tag("sunspecdisconnect")
+	@Tag("c3309_EnableTestTest")
+	@Test
+	void c3309_EnableTestTest() {
+		assertTrue(sunspecDisconnectApp.enableSunspecDisconnectApp());
+	}
+
+	@Tag("simulator")
+	@Tag("sunspecdisconnect")
+	@Tag("c3311_DisableTestTest")
+	@Test
+	void c3311_DisableTestTest() {
+		assertTrue(sunspecDisconnectApp.disableSunspecDisconnectApp());
+	}
+
+	@Tag("simulator")
+	@Tag("sunspecdisconnect")
+	@Tag("c3312_DisconnectTestTest")
+//	@Tag("Regression21")
+	@Test
+	void c3312_DisconnectTestTest() {
+		assertTrue(sunspecDisconnectApp.c3312_DisconnectTest());
+	}
+
+	@Tag("simulator")
+	@Tag("sunspecdisconnect")
+	@Tag("c3313_ConnectTestTest")
+//	@Tag("Regression21")
+	@Test
+	void c3313_ConnectTestTest() {
+		assertTrue(sunspecDisconnectApp.c3313_ConnectTest());
+	}
+
+	@Tag("simulator")
+	@Tag("sunspecdisconnect")
+	@Tag("c3314_IssueDisconnectCommandWithAppDisabledTest")
+	@Test
+	void c3314_IssueDisconnectCommandWithAppDisabledTest() {
+		assertTrue(sunspecDisconnectApp.c3314_IssueDisconnectCommandWithAppDisabled());
+	}
+
+	@Tag("simulator")
+	@Tag("sunspecdisconnect")
+	@Tag("c3315_IssueConnectCommandWithAppDisabledTest")
+	@Test
+	void c3315_IssueConnectCommandWithAppDisabledTest() {
+		assertTrue(sunspecDisconnectApp.c3315_IssueConnectCommandWithAppDisabled());
+	}
+	
+	@Test
+	void testSetPCSConnectionDisconnect() {
+		assertTrue(SunspecDisconnectApp.disconnectPcs());
+	}
+}

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="aimApiChallenge.apiTests" time="1.183" tests="5" errors="0" skipped="0" failures="1">
+  <properties>
+    <property name="java.specification.version" value="13"/>
+    <property name="sun.jnu.encoding" value="UTF-8"/>
+    <property name="java.class.path" value="/Users/mb/eclipse-workspace/aimApiChallenge/target/test-classes:/Users/mb/eclipse-workspace/aimApiChallenge/target/classes:/Users/mb/.m2/repository/org/apache/httpcomponents/httpclient/4.5.13/httpclient-4.5.13.jar:/Users/mb/.m2/repository/commons-logging/commons-logging/1.2/commons-logging-1.2.jar:/Users/mb/.m2/repository/commons-codec/commons-codec/1.11/commons-codec-1.11.jar:/Users/mb/.m2/repository/org/apache/httpcomponents/httpcore/4.4.15/httpcore-4.4.15.jar:/Users/mb/.m2/repository/org/apache/logging/log4j/log4j-web/2.15.0/log4j-web-2.15.0.jar:/Users/mb/.m2/repository/org/apache/logging/log4j/log4j-api/2.15.0/log4j-api-2.15.0.jar:/Users/mb/.m2/repository/org/apache/logging/log4j/log4j-core/2.15.0/log4j-core-2.15.0.jar:/Users/mb/.m2/repository/com/googlecode/json-simple/json-simple/1.1.1/json-simple-1.1.1.jar:/Users/mb/.m2/repository/junit/junit/4.10/junit-4.10.jar:/Users/mb/.m2/repository/org/hamcrest/hamcrest-core/1.1/hamcrest-core-1.1.jar:/Users/mb/.m2/repository/org/json/json/20200518/json-20200518.jar:/Users/mb/.m2/repository/com/google/code/gson/gson/2.8.5/gson-2.8.5.jar:/Users/mb/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.4.0/junit-jupiter-engine-5.4.0.jar:/Users/mb/.m2/repository/org/apiguardian/apiguardian-api/1.0.0/apiguardian-api-1.0.0.jar:/Users/mb/.m2/repository/org/junit/platform/junit-platform-engine/1.4.0/junit-platform-engine-1.4.0.jar:/Users/mb/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.4.0/junit-jupiter-api-5.4.0.jar:/Users/mb/.m2/repository/org/opentest4j/opentest4j/1.1.1/opentest4j-1.1.1.jar:/Users/mb/.m2/repository/org/junit/platform/junit-platform-commons/1.4.0/junit-platform-commons-1.4.0.jar:"/>
+    <property name="java.vm.vendor" value="Oracle Corporation"/>
+    <property name="sun.arch.data.model" value="64"/>
+    <property name="java.vendor.url" value="https://java.oracle.com/"/>
+    <property name="os.name" value="Mac OS X"/>
+    <property name="java.vm.specification.version" value="13"/>
+    <property name="sun.java.launcher" value="SUN_STANDARD"/>
+    <property name="user.country" value="US"/>
+    <property name="sun.boot.library.path" value="/Library/Java/JavaVirtualMachines/jdk-13.0.1.jdk/Contents/Home/lib"/>
+    <property name="sun.java.command" value="/Users/mb/eclipse-workspace/aimApiChallenge/target/surefire/surefirebooter5524148334979569417.jar /Users/mb/eclipse-workspace/aimApiChallenge/target/surefire 2022-11-09T08-16-35_665-jvmRun1 surefire15768765265246370621tmp surefire_017755515573252225166tmp"/>
+    <property name="http.nonProxyHosts" value="local|*.local|169.254/16|*.169.254/16"/>
+    <property name="jdk.debug" value="release"/>
+    <property name="test" value="apiTests"/>
+    <property name="surefire.test.class.path" value="/Users/mb/eclipse-workspace/aimApiChallenge/target/test-classes:/Users/mb/eclipse-workspace/aimApiChallenge/target/classes:/Users/mb/.m2/repository/org/apache/httpcomponents/httpclient/4.5.13/httpclient-4.5.13.jar:/Users/mb/.m2/repository/commons-logging/commons-logging/1.2/commons-logging-1.2.jar:/Users/mb/.m2/repository/commons-codec/commons-codec/1.11/commons-codec-1.11.jar:/Users/mb/.m2/repository/org/apache/httpcomponents/httpcore/4.4.15/httpcore-4.4.15.jar:/Users/mb/.m2/repository/org/apache/logging/log4j/log4j-web/2.15.0/log4j-web-2.15.0.jar:/Users/mb/.m2/repository/org/apache/logging/log4j/log4j-api/2.15.0/log4j-api-2.15.0.jar:/Users/mb/.m2/repository/org/apache/logging/log4j/log4j-core/2.15.0/log4j-core-2.15.0.jar:/Users/mb/.m2/repository/com/googlecode/json-simple/json-simple/1.1.1/json-simple-1.1.1.jar:/Users/mb/.m2/repository/junit/junit/4.10/junit-4.10.jar:/Users/mb/.m2/repository/org/hamcrest/hamcrest-core/1.1/hamcrest-core-1.1.jar:/Users/mb/.m2/repository/org/json/json/20200518/json-20200518.jar:/Users/mb/.m2/repository/com/google/code/gson/gson/2.8.5/gson-2.8.5.jar:/Users/mb/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.4.0/junit-jupiter-engine-5.4.0.jar:/Users/mb/.m2/repository/org/apiguardian/apiguardian-api/1.0.0/apiguardian-api-1.0.0.jar:/Users/mb/.m2/repository/org/junit/platform/junit-platform-engine/1.4.0/junit-platform-engine-1.4.0.jar:/Users/mb/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.4.0/junit-jupiter-api-5.4.0.jar:/Users/mb/.m2/repository/org/opentest4j/opentest4j/1.1.1/opentest4j-1.1.1.jar:/Users/mb/.m2/repository/org/junit/platform/junit-platform-commons/1.4.0/junit-platform-commons-1.4.0.jar:"/>
+    <property name="sun.cpu.endian" value="little"/>
+    <property name="user.home" value="/Users/mb"/>
+    <property name="user.language" value="en"/>
+    <property name="java.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.version.date" value="2019-10-15"/>
+    <property name="java.home" value="/Library/Java/JavaVirtualMachines/jdk-13.0.1.jdk/Contents/Home"/>
+    <property name="file.separator" value="/"/>
+    <property name="basedir" value="/Users/mb/eclipse-workspace/aimApiChallenge"/>
+    <property name="java.vm.compressedOopsMode" value="Zero based"/>
+    <property name="line.separator" value="&#10;"/>
+    <property name="java.specification.name" value="Java Platform API Specification"/>
+    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
+    <property name="surefire.real.class.path" value="/Users/mb/eclipse-workspace/aimApiChallenge/target/surefire/surefirebooter5524148334979569417.jar"/>
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
+    <property name="ftp.nonProxyHosts" value="local|*.local|169.254/16|*.169.254/16"/>
+    <property name="java.runtime.version" value="13.0.1+9"/>
+    <property name="user.name" value="mb"/>
+    <property name="path.separator" value=":"/>
+    <property name="os.version" value="10.16"/>
+    <property name="java.runtime.name" value="Java(TM) SE Runtime Environment"/>
+    <property name="file.encoding" value="UTF-8"/>
+    <property name="java.vm.name" value="Java HotSpot(TM) 64-Bit Server VM"/>
+    <property name="localRepository" value="/Users/mb/.m2/repository"/>
+    <property name="java.vendor.url.bug" value="https://bugreport.java.com/bugreport/"/>
+    <property name="java.io.tmpdir" value="/var/folders/qf/z35r288d1zg1h8jtgxxzy17c0000gq/T/"/>
+    <property name="java.version" value="13.0.1"/>
+    <property name="user.dir" value="/Users/mb/eclipse-workspace/aimApiChallenge"/>
+    <property name="os.arch" value="x86_64"/>
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
+    <property name="java.library.path" value="/Users/mb/Library/Java/Extensions:/Library/Java/Extensions:/Network/Library/Java/Extensions:/System/Library/Java/Extensions:/usr/lib/java:."/>
+    <property name="java.vm.info" value="mixed mode, sharing"/>
+    <property name="java.vendor" value="Oracle Corporation"/>
+    <property name="java.vm.version" value="13.0.1+9"/>
+    <property name="sun.io.unicode.encoding" value="UnicodeBig"/>
+    <property name="socksNonProxyHosts" value="local|*.local|169.254/16|*.169.254/16"/>
+    <property name="java.class.version" value="57.0"/>
+  </properties>
+  <testcase name="test_getAllVerifyResponseBody" classname="aimApiChallenge.apiTests" time="0.505"/>
+  <testcase name="test_getAllVerifyResponseCode" classname="aimApiChallenge.apiTests" time="0.204"/>
+  <testcase name="test_FalureLogDemogetAllVerifyResponseCode" classname="aimApiChallenge.apiTests" time="0.217">
+    <failure message="Faking failure to demonstrate failure logging. The api service &apos;get all skus&apos; did not return a status code of 201 ==&gt; expected: &lt;201&gt; but was: &lt;200&gt;" type="org.opentest4j.AssertionFailedError"><![CDATA[org.opentest4j.AssertionFailedError: Faking failure to demonstrate failure logging. The api service 'get all skus' did not return a status code of 201 ==> expected: <201> but was: <200>
+	at aimApiChallenge.apiTests.test_FalureLogDemogetAllVerifyResponseCode(apiTests.java:42)
+]]></failure>
+  </testcase>
+  <testcase name="test_getSingleSkuVerifyResponseCode" classname="aimApiChallenge.apiTests" time="0.086"/>
+  <testcase name="test_getSingleSkuResponseBody" classname="aimApiChallenge.apiTests" time="0.162"/>
+</testsuite>
